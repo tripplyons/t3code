@@ -2,9 +2,12 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import type { FormInfo, OpenCodeClient, SessionMessageInfo, V2Event } from "@opencode/client";
 
 import {
@@ -47,6 +50,8 @@ function makeFakeOpenCode(options?: {
   readonly commands?: ReadonlyArray<string>;
   readonly interrupted?: boolean;
   readonly messages?: ReadonlyArray<SessionMessageInfo>;
+  /** Answers `session.prompt`, which otherwise resolves at once. */
+  readonly prompt?: () => Promise<unknown>;
 }) {
   const calls: Array<{ readonly method: string; readonly input: unknown }> = [];
   const buffered: Array<V2Event | "end"> = [openCodeEvent("server.connected", {})];
@@ -121,7 +126,10 @@ function makeFakeOpenCode(options?: {
       move: record("session.move", undefined),
       wait: record("session.wait", undefined),
       remove: record("session.remove", undefined),
-      prompt: record("session.prompt", undefined),
+      prompt: (input: unknown) => {
+        calls.push({ method: "session.prompt", input });
+        return options?.prompt?.() ?? Promise.resolve(undefined);
+      },
       command: record("session.command", undefined),
       compact: record("session.compact", undefined),
       interrupt: record("session.interrupt", { interrupted: options?.interrupted ?? true }),
@@ -552,6 +560,67 @@ it.effect("aborts a turn OpenCode had not started, and withdraws its queued prom
     const [aborted] = ofType(yield* eventsThrough(adapter, "turn.aborted"), "turn.aborted");
     NodeAssert.equal(aborted?.turnId, turn.turnId);
     NodeAssert.equal(aborted?.payload.reason, "Interrupted by user.");
+  }),
+);
+
+/** A `session.prompt` that stays pending, as it does while OpenCode boots a directory. */
+const makePendingPrompt = Effect.fn("makePendingPrompt")(function* () {
+  const started = yield* Queue.make<void>();
+  const accepted = Promise.withResolvers<unknown>();
+  return {
+    started: Queue.take(started),
+    accept: accepted.resolve,
+    prompt: () => {
+      Queue.offerUnsafe(started, undefined);
+      return accepted.promise;
+    },
+  };
+});
+
+it.effect("keeps the turn open while OpenCode is slow to accept its first prompt", () =>
+  Effect.gen(function* () {
+    const pending = yield* makePendingPrompt();
+    const fake = makeFakeOpenCode({ prompt: pending.prompt });
+    const adapter = yield* makeAdapter(fake);
+    yield* startSession(adapter);
+    const sending = yield* adapter
+      .sendTurn({ threadId: THREAD_ID, input: "hi" })
+      .pipe(Effect.forkChild);
+    yield* pending.started;
+
+    yield* TestClock.adjust("30 seconds");
+    pending.accept({ id: "inbox-1" });
+    const turn = yield* Fiber.join(sending);
+    fake.push(enqueued("inbox-1"), delivered("inbox-1"), succeeded());
+
+    const events = yield* eventsThrough(adapter, "turn.completed");
+    NodeAssert.equal(ofType(events, "turn.completed")[0]?.turnId, turn.turnId);
+    NodeAssert.deepEqual(ofType(events, "turn.aborted"), []);
+    NodeAssert.deepEqual(fake.inputsOf("session.inbox.cancel"), []);
+  }),
+);
+
+it.effect("withdraws a prompt OpenCode accepts after its turn was stopped", () =>
+  Effect.gen(function* () {
+    const pending = yield* makePendingPrompt();
+    const fake = makeFakeOpenCode({ interrupted: false, prompt: pending.prompt });
+    const adapter = yield* makeAdapter(fake);
+    yield* startSession(adapter);
+    const sending = yield* adapter
+      .sendTurn({ threadId: THREAD_ID, input: "hi" })
+      .pipe(Effect.forkChild);
+    yield* pending.started;
+
+    yield* adapter.interruptTurn(THREAD_ID);
+    yield* eventsThrough(adapter, "turn.aborted");
+    NodeAssert.equal(fake.inputsOf("session.interrupt").length, 1);
+
+    pending.accept({ id: "inbox-1" });
+    yield* Fiber.join(sending);
+    NodeAssert.deepEqual(fake.inputsOf("session.inbox.cancel"), [
+      { sessionID: SESSION_ID, inboxID: "inbox-1" },
+    ]);
+    NodeAssert.equal(fake.inputsOf("session.interrupt").length, 2);
   }),
 );
 

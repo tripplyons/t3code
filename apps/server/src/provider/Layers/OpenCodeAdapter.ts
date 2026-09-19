@@ -142,6 +142,11 @@ const OPENCODE_DEFAULT_AGENT = "build";
 const OPENCODE_PLAN_AGENT = "plan";
 const OPENCODE_INSTRUCTIONS_KEY = "t3code.runtime";
 const OPENCODE_REQUEST_TIMEOUT = "10 seconds";
+/**
+ * The first prompt in a directory waits while OpenCode loads that directory's
+ * plugins, MCP servers and provider catalog, which includes network fetches.
+ */
+const OPENCODE_SUBMISSION_TIMEOUT = "2 minutes";
 
 interface OpenCodeTurnTokenUsageAccumulator {
   steps: number;
@@ -274,9 +279,15 @@ const toRequestError = (cause: OpenCodeRuntimeError): ProviderAdapterRequestErro
   });
 
 /** Runs one OpenCode request with the adapter's request timeout and error shape. */
-const request = <A>(operation: string, fn: (signal: AbortSignal) => Promise<A>) =>
+const request = <A>(
+  operation: string,
+  fn: (signal: AbortSignal) => Promise<A>,
+  timeout:
+    | typeof OPENCODE_REQUEST_TIMEOUT
+    | typeof OPENCODE_SUBMISSION_TIMEOUT = OPENCODE_REQUEST_TIMEOUT,
+) =>
   runOpenCodeSdk(operation, fn).pipe(
-    Effect.timeout(OPENCODE_REQUEST_TIMEOUT),
+    Effect.timeout(timeout),
     Effect.catchTags({
       OpenCodeRuntimeError: (cause) => Effect.fail(toRequestError(cause)),
       TimeoutError: (cause) =>
@@ -284,7 +295,7 @@ const request = <A>(operation: string, fn: (signal: AbortSignal) => Promise<A>) 
           new ProviderAdapterRequestError({
             provider: PROVIDER,
             method: operation,
-            detail: `OpenCode ${operation} did not complete within ${OPENCODE_REQUEST_TIMEOUT}.`,
+            detail: `OpenCode ${operation} did not complete within ${timeout}.`,
             cause,
           }),
         ),
@@ -1534,24 +1545,30 @@ export function makeOpenCodeAdapter(
 
           const submission = {};
           context.submissions.push(submission);
-          yield* (
+          const inboxItem = yield* (
             nativeCommand
-              ? request("session.command", (signal) =>
-                  context.client.session.command(
-                    {
-                      sessionID: context.openCodeSessionId,
-                      name: nativeCommand.name,
-                      text: commandMatch?.[2] ?? "",
-                      files,
-                    },
-                    { signal },
-                  ),
-                )
-              : request("session.prompt", (signal) =>
-                  context.client.session.prompt(
-                    { sessionID: context.openCodeSessionId, text, files },
-                    { signal },
-                  ),
+              ? request(
+                  "session.command",
+                  (signal) =>
+                    context.client.session.command(
+                      {
+                        sessionID: context.openCodeSessionId,
+                        name: nativeCommand.name,
+                        text: commandMatch?.[2] ?? "",
+                        files,
+                      },
+                      { signal },
+                    ),
+                  OPENCODE_SUBMISSION_TIMEOUT,
+                ).pipe(Effect.as(undefined))
+              : request(
+                  "session.prompt",
+                  (signal) =>
+                    context.client.session.prompt(
+                      { sessionID: context.openCodeSessionId, text, files },
+                      { signal },
+                    ),
+                  OPENCODE_SUBMISSION_TIMEOUT,
                 )
           ).pipe(
             Effect.tapError((cause) =>
@@ -1568,6 +1585,25 @@ export function makeOpenCodeAdapter(
               }),
             ),
           );
+
+          // A turn stopped while OpenCode was still accepting it had nothing
+          // to interrupt, so its work is withdrawn once the submission lands.
+          if (!steering && context.activeTurnId !== turnId) {
+            if (inboxItem) {
+              yield* request("session.inbox.cancel", (signal) =>
+                context.client.session.inbox.cancel(
+                  { sessionID: context.openCodeSessionId, inboxID: inboxItem.id },
+                  { signal },
+                ),
+              ).pipe(Effect.ignore);
+            }
+            yield* request("session.interrupt", (signal) =>
+              context.client.session.interrupt(
+                { sessionID: context.openCodeSessionId },
+                { signal },
+              ),
+            ).pipe(Effect.ignore);
+          }
 
           return {
             threadId: input.threadId,
