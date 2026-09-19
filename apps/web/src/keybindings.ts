@@ -8,6 +8,7 @@ import {
   type ModelPickerJumpKeybindingCommand,
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
 import { isMacPlatform } from "./lib/utils";
 
@@ -245,6 +246,23 @@ export function resolveShortcutCommand(
     return binding.command;
   }
   return null;
+}
+
+/**
+ * Whether the user bound this keypress themselves: it resolves to a command
+ * the default bindings would not give it. A focused editor yields these
+ * chords to the app instead of running its built-in handling (select all,
+ * formatting), which would otherwise swallow them. Chords left at their
+ * default keep the editor's behavior, such as Mod+B for bold.
+ */
+export function isCustomShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  const command = resolveShortcutCommand(event, keybindings, options);
+  if (command === null) return false;
+  return command !== resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, options);
 }
 
 export function formatShortcutKeyLabel(key: string): string {

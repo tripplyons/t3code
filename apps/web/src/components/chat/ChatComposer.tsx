@@ -177,7 +177,11 @@ import {
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
+import {
+  isCustomShortcut,
+  resolveShortcutCommand,
+  shortcutLabelForCommand,
+} from "../../keybindings";
 import {
   type TerminalContextDraft,
   type TerminalContextSelection,
@@ -3947,6 +3951,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: command key
   // ------------------------------------------------------------------
+  // A chord the user rebound (say Mod+A to jump threads) belongs to the app,
+  // even where the editor has a built-in meaning for it.
+  const shouldYieldComposerKeyDown = (event: KeyboardEvent) =>
+    isCustomShortcut(event, keybindings, {
+      context: {
+        terminalFocus: false,
+        terminalOpen,
+        modelPickerOpen: isComposerModelPickerOpen,
+      },
+    });
+
   const onComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
@@ -6828,6 +6843,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onChange={onPromptChange}
                     onVisibleSelectionChange={expandComposerForEditorChange}
                     onCommandKeyDown={onComposerCommandKey}
+                    shouldYieldKeyDown={shouldYieldComposerKeyDown}
                     onPageScrollKeyDown={onPageScrollKeyDown}
                     onPageScrollKeyUp={onPageScrollKeyUp}
                     onPageScrollRelease={onPageScrollRelease}

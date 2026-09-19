@@ -13,6 +13,7 @@ import {
 } from "@t3tools/contracts";
 import {
   formatShortcutLabel,
+  isCustomShortcut,
   isDiffToggleShortcut,
   isRichTextBoldShortcut,
   modelPickerJumpCommandForIndex,
@@ -801,6 +802,22 @@ describe("cross-command precedence", () => {
       }),
       "chat.new",
     );
+  });
+});
+
+describe("isCustomShortcut", () => {
+  const keybindings = mergeWithDefaultKeybindings(
+    compile([{ shortcut: modShortcut("a"), command: "thread.jump.1" }]),
+  );
+  const options = { platform: "MacIntel" };
+
+  it("claims a chord the user rebound over an editor built-in", () => {
+    assert.isTrue(isCustomShortcut(event({ key: "a", metaKey: true }), keybindings, options));
+  });
+
+  it("leaves default bindings and unbound chords to the editor", () => {
+    assert.isFalse(isCustomShortcut(event({ key: "b", metaKey: true }), keybindings, options));
+    assert.isFalse(isCustomShortcut(event({ key: "i", metaKey: true }), keybindings, options));
   });
 });
 

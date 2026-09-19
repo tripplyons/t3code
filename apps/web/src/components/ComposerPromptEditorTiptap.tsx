@@ -140,6 +140,12 @@ export interface ComposerPromptEditorProps {
     event: KeyboardEvent,
     isTaskItem?: boolean,
   ) => boolean;
+  /**
+   * Return true for keypresses the app handles itself. The editor then skips
+   * its own handling without preventing default, so the event reaches the
+   * window shortcut listeners unclaimed.
+   */
+  shouldYieldKeyDown?: (event: KeyboardEvent) => boolean;
   onPageScrollKeyDown?: (key: "PageUp" | "PageDown") => void;
   onPageScrollKeyUp?: (key: string) => void;
   onPageScrollRelease?: () => void;
@@ -579,6 +585,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
     onChange,
     onVisibleSelectionChange,
     onCommandKeyDown,
+    shouldYieldKeyDown,
     onPageScrollKeyDown,
     onPageScrollKeyUp,
     onPageScrollRelease,
@@ -593,6 +600,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
   const onChangeRef = useRef(onChange);
   const onVisibleSelectionChangeRef = useRef(onVisibleSelectionChange);
   const onCommandKeyDownRef = useRef(onCommandKeyDown);
+  const shouldYieldKeyDownRef = useRef(shouldYieldKeyDown);
   const buildFragmentRef = useRef(buildContextClipboardFragment);
   const importFragmentRef = useRef(importContextFragment);
   const skillsRef = useRef(skills);
@@ -610,6 +618,9 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
   useEffect(() => {
     onCommandKeyDownRef.current = onCommandKeyDown;
   }, [onCommandKeyDown]);
+  useEffect(() => {
+    shouldYieldKeyDownRef.current = shouldYieldKeyDown;
+  }, [shouldYieldKeyDown]);
   useEffect(() => {
     buildFragmentRef.current = buildContextClipboardFragment;
   }, [buildContextClipboardFragment]);
@@ -795,6 +806,11 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           "data-testid": "composer-editor",
           "data-composer-rich-text": richText ? "true" : "false",
           "aria-placeholder": placeholder,
+        },
+        handleDOMEvents: {
+          // Returning true skips ProseMirror's keydown handling entirely,
+          // including the preventDefault its keymaps apply.
+          keydown: (_view, event) => shouldYieldKeyDownRef.current?.(event) ?? false,
         },
         handleKeyDown: (view, event) => {
           if (
