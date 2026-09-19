@@ -57,7 +57,6 @@ function ThreadBoard() {
     () => new Map(environments.map((environment) => [environment.environmentId, environment])),
     [environments],
   );
-  const total = columns.reduce((sum, column) => sum + column.threads.length, 0);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
@@ -87,11 +86,6 @@ function ThreadBoard() {
         {!bootstrapped && (
           <p role="status" className="mb-4 text-sm text-muted-foreground">
             Loading threads…
-          </p>
-        )}
-        {bootstrapped && total === 0 && (
-          <p role="status" className="mb-4 text-sm text-muted-foreground">
-            No unsettled threads{projectKey ? " in this project" : ""}.
           </p>
         )}
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
