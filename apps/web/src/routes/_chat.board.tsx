@@ -88,7 +88,7 @@ function ThreadBoard() {
             Loading threads…
           </p>
         )}
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           {columns.map((column) => (
             <section key={column.id} aria-labelledby={`board-${column.id}`} className="min-w-0">
               <h2 id={`board-${column.id}`} className="mb-3 text-sm font-medium">
@@ -128,7 +128,11 @@ function ThreadBoard() {
                                 ? "Failed"
                                 : status === "monitoring"
                                   ? "Monitoring"
-                                  : column.label}
+                                  : column.id === "idle" &&
+                                      (thread.latestTurn?.state === "completed" ||
+                                        thread.hasActionableProposedPlan)
+                                    ? "Ready"
+                                    : column.label}
                         </div>
                       </Link>
                     </li>

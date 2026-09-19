@@ -5,9 +5,8 @@ import type { SidebarThreadSummary } from "../types";
 import { resolveSidebarThreadStatus, sortThreadsForSidebar } from "./Sidebar.logic";
 
 export const THREAD_BOARD_COLUMNS = [
-  { id: "needs-you", label: "Needs you" },
+  { id: "needs-you", label: "Awaiting" },
   { id: "working", label: "Working" },
-  { id: "ready", label: "Ready" },
   { id: "idle", label: "Idle" },
 ] as const;
 
@@ -21,7 +20,6 @@ export function resolveThreadBoardColumn(
   const status = resolveSidebarThreadStatus(thread);
   if (status === "approval" || status === "input" || status === "failed") return "needs-you";
   if (status === "working" || status === "monitoring") return "working";
-  if (thread.latestTurn?.state === "completed" || thread.hasActionableProposedPlan) return "ready";
   return "idle";
 }
 
@@ -46,7 +44,6 @@ export function buildThreadBoard(
   const groups: Record<BoardColumn, SidebarThreadSummary[]> = {
     "needs-you": [],
     working: [],
-    ready: [],
     idle: [],
   };
   const visibleThreads = threads.filter((thread) => {

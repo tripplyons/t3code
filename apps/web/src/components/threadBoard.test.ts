@@ -46,15 +46,15 @@ const capabilities = {
 };
 
 describe("thread board", () => {
-  it("separates completed results and proposed plans from idle threads", () => {
+  it("groups completed results and proposed plans with idle threads", () => {
     expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
-    expect(resolveThreadBoardColumn(thread({ latestTurn: completed }), options)).toBe("ready");
+    expect(resolveThreadBoardColumn(thread({ latestTurn: completed }), options)).toBe("idle");
     expect(resolveThreadBoardColumn(thread({ hasActionableProposedPlan: true }), options)).toBe(
-      "ready",
+      "idle",
     );
   });
   it.each(["working", "monitoring"] as const)(
-    "keeps live background %s out of Ready",
+    "keeps live background %s out of Idle",
     (backgroundLiveness) => {
       expect(
         resolveThreadBoardColumn(thread({ latestTurn: completed, backgroundLiveness }), options),
@@ -107,7 +107,7 @@ describe("thread board", () => {
       resolveThreadBoardColumn(thread({ ...snoozed, hasPendingUserInput: true }), options),
     ).toBe("needs-you");
     expect(resolveThreadBoardColumn(thread({ ...snoozed, latestTurn: completed }), options)).toBe(
-      "ready",
+      "idle",
     );
     expect(
       resolveThreadBoardColumn(thread(snoozed), { ...options, now: snoozed.snoozedUntil }),
