@@ -19,7 +19,7 @@ const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
   Layer.provideMerge(SqlitePersistenceMemory),
 );
 
-it.effect("selects bounded agent/tool previews across snapshots, live refetches, and reverts", () =>
+it.effect("selects bounded agent-only previews across snapshots, live refetches, and reverts", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const query = yield* ProjectionSnapshotQuery;
@@ -52,7 +52,11 @@ it.effect("selects bounded agent/tool previews across snapshots, live refetches,
       yield* sql`INSERT INTO projection_thread_activities
         (activity_id, thread_id, tone, kind, summary, payload_json, created_at)
         VALUES (${kind}, ${threadId}, 'tool', ${kind}, 'vp test run', '{"data":"large output stays out of the shell"}', ${createdAt})`;
-      const expected = { kind: "tool", text: "vp test run", createdAt };
+      const expected = {
+        kind: "agent",
+        text: "Checking the implementation and tests",
+        createdAt: "2026-09-19T00:00:01Z",
+      };
       assert.deepEqual(yield* read(), expected);
       assert.deepEqual(
         (yield* query.getShellSnapshot()).threads[0]?.latestActivityPreview,
@@ -62,7 +66,7 @@ it.effect("selects bounded agent/tool previews across snapshots, live refetches,
     yield* sql`INSERT INTO projection_thread_activities
       (activity_id, thread_id, tone, kind, summary, payload_json, created_at)
       VALUES ('noise', ${threadId}, 'info', 'context-window.updated', 'Not a tool call', '{}', '2026-09-19T00:00:20Z')`;
-    assert.equal((yield* read())?.text, "vp test run");
+    assert.equal((yield* read())?.text, "Checking the implementation and tests");
     // A long Unicode result must remain bounded and decode without losing the shell.
     const longText = "🧪".repeat(10_000);
     yield* sql`INSERT INTO projection_thread_messages
@@ -77,9 +81,7 @@ it.effect("selects bounded agent/tool previews across snapshots, live refetches,
     yield* sql`UPDATE projection_threads SET archived_at = NULL WHERE thread_id = ${threadId}`;
     // Revert removes records; the preview must follow the remaining history.
     yield* sql`DELETE FROM projection_thread_messages WHERE message_id = 'result'`;
-    assert.equal((yield* read())?.kind, "tool");
-    yield* sql`DELETE FROM projection_thread_activities WHERE thread_id = ${threadId}`;
-    assert.equal((yield* read())?.kind, "agent");
+    assert.equal((yield* read())?.text, "Checking the implementation and tests");
     yield* sql`DELETE FROM projection_thread_messages WHERE thread_id = ${threadId}`;
     assert.isNull(yield* read());
   }).pipe(Effect.provide(layer)),

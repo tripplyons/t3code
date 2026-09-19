@@ -60,7 +60,7 @@ function ThreadBoard() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
-      <WorkspacePageHeader electron={isElectron}>
+      <WorkspacePageHeader electron={isElectron} className="bg-background">
         <h1 className="shrink-0 text-sm font-medium">Board</h1>
         <div className="[-webkit-app-region:no-drag] ml-auto min-w-0 w-44 sm:w-64">
           <Select value={projectKey} onValueChange={(value) => setProjectKey(value ?? "")}>
@@ -82,7 +82,7 @@ function ThreadBoard() {
           </Select>
         </div>
       </WorkspacePageHeader>
-      <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
+      <div className="min-h-0 flex-1 overflow-auto bg-background p-4 sm:p-6">
         {!bootstrapped && (
           <p role="status" className="mb-4 text-sm text-muted-foreground">
             Loading threads…
@@ -107,11 +107,9 @@ function ThreadBoard() {
                         className="block rounded-lg border bg-background p-3 outline-none hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <div className="break-words text-sm font-medium">{thread.title}</div>
-                        {thread.latestActivityPreview && (
+                        {thread.latestActivityPreview?.kind === "agent" && (
                           <div className="mt-2 text-sm text-muted-foreground">
-                            <span className="text-xs font-medium">
-                              {thread.latestActivityPreview.kind === "agent" ? "Agent" : "Tool"}
-                            </span>
+                            <span className="text-xs font-medium">Agent</span>
                             <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words">
                               {thread.latestActivityPreview.text}
                             </p>
