@@ -2,8 +2,12 @@
 
 Install and authenticate OpenCode on the machine running your environment, then
 enable it in **Settings > Providers**. See [provider setup](./install.md#providers).
-T3 Code requires OpenCode 1.14.19 or newer, including when you connect an existing
-OpenCode server.
+T3 Code requires OpenCode 2.0.0 or newer, including when you connect an existing
+OpenCode server. OpenCode 1 is not supported. To upgrade an npm install, run
+`npm install -g @opencode/cli`.
+
+Plan mode uses OpenCode's `plan` agent when your OpenCode setup defines one.
+Otherwise the turn runs with the `build` agent.
 
 ## Local or external server
 

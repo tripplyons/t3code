@@ -731,7 +731,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         serverDependencies: {
           "@anthropic-ai/claude-agent-sdk": "^0.3.170",
           "@ff-labs/fff-node": "0.9.4",
-          "@opencode-ai/sdk": "^1.3.15",
+          "@opencode/client": "^2.0.8",
           "@pierre/diffs": "1.3.0",
           "node-pty": "1.1.0",
         },

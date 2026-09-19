@@ -71,7 +71,7 @@ function isOpenCodeNativeCommandPath(commandPath: string): boolean {
 
 const UPDATE = makePackageManagedProviderMaintenanceResolver({
   provider: DRIVER_KIND,
-  npmPackageName: "opencode-ai",
+  npmPackageName: "@opencode/cli",
   nativeUpdate: {
     args: ["upgrade"],
     isCommandPath: isOpenCodeNativeCommandPath,
@@ -139,7 +139,6 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       });
       const serverOwner = yield* OpenCodeServerOwner.make({
         binaryPath: effectiveConfig.binaryPath,
-        directory: serverConfig.cwd,
         ...(effectiveConfig.serverPassword
           ? { serverPassword: effectiveConfig.serverPassword }
           : {}),
@@ -168,19 +167,14 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
         Effect.provideService(OpenCodeRuntime, openCodeRuntime),
       );
-      // NOTE: the local branch intentionally uses the shared SDK server
-      // instead of `opencode debug skill` (loadSkillsFromCli). The CLI writes
-      // its full JSON inventory to stdout, but the Bun-compiled binary does
-      // not flush more than one 64KB pipe buffer to a non-TTY stdout, so the
-      // piped output arrives truncated and unparseable — which degrades to an
-      // empty skill list and poisons the workspace snapshot the `$` picker
-      // reads. The SDK `app.skills` endpoint honors the per-request directory
-      // and returns complete results regardless of size.
-      const loadWorkspaceInventory = (client: Parameters<typeof loadOpenCodeCommands>[0]) =>
+      const loadWorkspaceInventory = (
+        client: Parameters<typeof loadOpenCodeCommands>[0],
+        cwd: string,
+      ) =>
         Effect.all(
           {
-            skills: openCodeRuntime.loadOpenCodeSkills(client),
-            commands: loadOpenCodeCommands(client).pipe(
+            skills: openCodeRuntime.loadOpenCodeSkills(client, cwd),
+            commands: loadOpenCodeCommands(client, cwd).pipe(
               Effect.timeout("10 seconds"),
               Effect.orElseSucceed(() => []),
             ),
@@ -193,7 +187,6 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
               Effect.gen(function* () {
                 const server = yield* openCodeRuntime.connectToOpenCodeServer({
                   binaryPath: effectiveConfig.binaryPath,
-                  directory: cwd,
                   serverUrl: effectiveConfig.serverUrl,
                   ...(effectiveConfig.serverPassword
                     ? { serverPassword: effectiveConfig.serverPassword }
@@ -202,23 +195,22 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
                 });
                 const client = openCodeRuntime.createOpenCodeSdkClient({
                   baseUrl: server.url,
-                  directory: cwd,
                   ...(effectiveConfig.serverPassword
                     ? { serverPassword: effectiveConfig.serverPassword }
                     : {}),
                 });
-                return yield* loadWorkspaceInventory(client);
+                return yield* loadWorkspaceInventory(client, cwd);
               }),
             )
           : serverOwner.withServer((server) =>
               loadWorkspaceInventory(
                 openCodeRuntime.createOpenCodeSdkClient({
                   baseUrl: server.url,
-                  directory: cwd,
                   ...(server.serverPassword !== undefined
                     ? { serverPassword: server.serverPassword }
                     : {}),
                 }),
+                cwd,
               ),
             );
 

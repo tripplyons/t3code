@@ -55,11 +55,11 @@ function lifecycleFor(provider: ProviderDriverKind): ProviderMaintenanceCapabili
   }
   return makeProviderMaintenanceCapabilities({
     provider,
-    packageName: provider === OPENCODE_DRIVER ? "opencode-ai" : "@openai/codex",
+    packageName: provider === OPENCODE_DRIVER ? "@opencode/cli" : "@openai/codex",
     updateExecutable: "npm",
     updateArgs:
       provider === OPENCODE_DRIVER
-        ? ["install", "-g", "opencode-ai@latest"]
+        ? ["install", "-g", "@opencode/cli@latest"]
         : ["install", "-g", "@openai/codex@latest"],
     updateLockKey: "npm-global",
   });
@@ -699,11 +699,11 @@ describe("providerMaintenanceRunner", () => {
           Effect.succeed(
             makeProviderMaintenanceCapabilities({
               provider,
-              packageName: provider === OPENCODE_DRIVER ? "opencode-ai" : "@openai/codex",
+              packageName: provider === OPENCODE_DRIVER ? "@opencode/cli" : "@openai/codex",
               updateExecutable: "npm",
               updateArgs:
                 provider === OPENCODE_DRIVER
-                  ? ["install", "-g", "opencode-ai@latest"]
+                  ? ["install", "-g", "@opencode/cli@latest"]
                   : ["install", "-g", "@openai/codex@latest"],
               updateLockKey: "npm-global",
             }),
@@ -737,7 +737,7 @@ describe("providerMaintenanceRunner", () => {
       yield* Fiber.join(second);
       assert.deepStrictEqual(calls, [
         "install -g @openai/codex@latest",
-        "install -g opencode-ai@latest",
+        "install -g @opencode/cli@latest",
       ]);
     }).pipe(
       Effect.provide(

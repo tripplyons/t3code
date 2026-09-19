@@ -28,7 +28,7 @@ import type { OpenCodeInventory } from "../opencodeRuntime.ts";
 import { readOpenCodeGoUsageLimits } from "./openCodeUsageLimits.ts";
 const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
-const DEFAULT_VERSION_STDOUT = "opencode 1.14.19\n";
+const DEFAULT_VERSION_STDOUT = "opencode v2.0.8\n";
 
 it.effect("reads Go limits with the instance's XDG credentials and preserves reset times", () =>
   Effect.gen(function* () {
@@ -153,6 +153,16 @@ it.effect("keeps Go entitlement absence distinct from failed or malformed usage 
  * invoke the check, assert on the returned snapshot.
  */
 
+const EMPTY_INVENTORY = { providers: [], models: [], agents: [], skills: [], commands: [] };
+
+const GPT_MODEL = {
+  id: "gpt-5.4",
+  providerID: "openai",
+  name: "GPT-5.4",
+  enabled: true,
+  variants: [],
+};
+
 const runtimeMock = {
   state: {
     runVersionError: null as Error | null,
@@ -164,14 +174,9 @@ const runtimeMock = {
     closeCalls: 0,
     sdkClientInputs: [] as Array<{
       baseUrl: string;
-      directory: string;
       serverPassword?: string;
     }>,
-    inventory: {
-      providerList: { connected: [] as string[], all: [] as unknown[], default: {} },
-      agents: [] as unknown[],
-      skills: [] as unknown[],
-    } as unknown,
+    inventory: EMPTY_INVENTORY as unknown,
   },
   reset() {
     this.state.runVersionError = null;
@@ -182,11 +187,7 @@ const runtimeMock = {
     this.state.inventoryCwd = null;
     this.state.closeCalls = 0;
     this.state.sdkClientInputs.length = 0;
-    this.state.inventory = {
-      providerList: { connected: [], all: [] as unknown[], default: {} },
-      agents: [] as unknown[],
-      skills: [] as unknown[],
-    };
+    this.state.inventory = EMPTY_INVENTORY;
   },
 };
 
@@ -208,7 +209,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         ...(effectiveServerPassword !== undefined
           ? { serverPassword: effectiveServerPassword }
           : {}),
-        version: "1.14.19",
+        version: "2.0.8",
         isRunning: Effect.succeed(true),
         exitCode: Effect.never,
       };
@@ -217,7 +218,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
     Effect.gen(function* () {
       if (runtimeMock.state.connectionError) {
         return yield* new OpenCodeRuntimeError({
-          operation: "global.health",
+          operation: "server.info",
           detail: runtimeMock.state.connectionError.message,
           cause: runtimeMock.state.connectionError,
         });
@@ -232,7 +233,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       return {
         url: serverUrl ?? "http://127.0.0.1:4301",
         ...(serverPassword ? { serverPassword } : {}),
-        version: "1.14.19",
+        version: "2.0.8",
         exitCode: null,
         external: Boolean(serverUrl),
       };
@@ -253,8 +254,9 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
     runtimeMock.state.sdkClientInputs.push(input);
     return {} as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>;
   },
-  loadOpenCodeInventory: () =>
-    runtimeMock.state.inventoryError
+  loadOpenCodeInventory: (_client, cwd) => {
+    runtimeMock.state.inventoryCwd = cwd;
+    return runtimeMock.state.inventoryError
       ? Effect.fail(
           new OpenCodeRuntimeError({
             operation: "loadOpenCodeInventory",
@@ -262,40 +264,24 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             cause: runtimeMock.state.inventoryError,
           }),
         )
-      : Effect.succeed(runtimeMock.state.inventory as OpenCodeInventory),
-  loadInventoryFromCli: ({ cwd }) => {
-    runtimeMock.state.inventoryCwd = cwd;
-    return runtimeMock.state.inventoryError
-      ? Effect.fail(
-          new OpenCodeRuntimeError({
-            operation: "loadInventoryFromCli",
-            detail: runtimeMock.state.inventoryError.message,
-            cause: runtimeMock.state.inventoryError,
-          }),
-        )
       : Effect.succeed(runtimeMock.state.inventory as OpenCodeInventory);
   },
   loadOpenCodeSkills: () => Effect.succeed([]),
-  loadSkillsFromCli: () => Effect.succeed([]),
 };
 
 beforeEach(() => {
   runtimeMock.reset();
 });
 
-it("keeps native and MCP commands while preserving compaction and separate skills", () => {
+it("lists each OpenCode command once and keeps T3 Code's own compact command", () => {
   NodeAssert.deepEqual(
     openCodeCommandsToServerProviderSlashCommands([
-      { name: "review", description: "Review changes", source: "command", hints: ["$ARGUMENTS"] },
-      { name: "review", source: "command", hints: [] },
-      { name: "compact", source: "command", hints: [] },
-      { name: "skill", source: "skill", hints: [] },
-      { name: "mcp:search", source: "mcp", hints: ["query"] },
-    ]).slice(1),
-    [
-      { name: "review", description: "Review changes", input: { hint: "$ARGUMENTS" } },
-      { name: "mcp:search", input: { hint: "query" } },
-    ],
+      { name: "review", description: "Review changes" },
+      { name: "review" },
+      { name: "compact", description: "OpenCode's compact" },
+      { name: "mcp:search" },
+    ]).map((command) => command.name),
+    ["compact", "review", "mcp:search"],
   );
 });
 
@@ -323,7 +309,6 @@ const checkProvider = Effect.fn("checkProvider")(function* (
     Effect.gen(function* () {
       const serverOwner = yield* OpenCodeServerOwner.make({
         binaryPath: settings.binaryPath,
-        directory: cwd,
         ...(settings.serverPassword ? { serverPassword: settings.serverPassword } : {}),
         ...(environment ? { environment } : {}),
       });
@@ -381,43 +366,39 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
   it.effect("emits OpenCode variant defaults so trait picker can resolve a visible selection", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {
-        providerList: {
-          connected: ["openai"],
-          all: [
-            {
-              id: "openai",
-              name: "OpenAI",
-              models: {
-                "gpt-5.4": {
-                  id: "gpt-5.4",
-                  name: "GPT-5.4",
-                  variants: {
-                    none: {},
-                    low: {},
-                    medium: {},
-                    high: {},
-                    xhigh: {},
-                  },
-                },
-              },
-            },
-          ],
-          default: {},
-        },
+        ...EMPTY_INVENTORY,
+        providers: [{ id: "openai", name: "OpenAI" }],
+        models: [
+          {
+            ...GPT_MODEL,
+            variants: [{ id: "low" }, { id: "medium" }, { id: "high" }],
+          },
+          { ...GPT_MODEL, id: "gpt-disabled", name: "Disabled", enabled: false },
+        ],
         agents: [
-          { name: "build", hidden: false, mode: "primary" },
-          { name: "plan", hidden: false, mode: "primary" },
+          { id: "build", name: "build", hidden: false, mode: "primary" },
+          { id: "explore", name: "explore", hidden: false, mode: "subagent" },
         ],
       };
 
       const snapshot = yield* checkProvider(makeOpenCodeSettings());
       const model = snapshot.models.find((entry) => entry.slug === "openai/gpt-5.4");
 
+      NodeAssert.equal(snapshot.status, "ready");
+      NodeAssert.equal(
+        snapshot.models.some((entry) => entry.slug === "openai/gpt-disabled"),
+        false,
+      );
       NodeAssert.ok(model);
+      NodeAssert.equal(model.subProvider, "OpenAI");
       const variantDescriptor = model.capabilities?.optionDescriptors?.find(
         (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
       );
       NodeAssert.ok(variantDescriptor && variantDescriptor.type === "select");
+      NodeAssert.deepEqual(
+        variantDescriptor.options.map((option) => option.id),
+        ["low", "medium", "high"],
+      );
       NodeAssert.equal(
         variantDescriptor.options.find((option) => option.isDefault === true)?.id,
         "medium",
@@ -426,6 +407,10 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
         (descriptor) => descriptor.id === "agent" && descriptor.type === "select",
       );
       NodeAssert.ok(agentDescriptor && agentDescriptor.type === "select");
+      NodeAssert.deepEqual(
+        agentDescriptor.options.map((option) => option.id),
+        ["build"],
+      );
       NodeAssert.equal(
         agentDescriptor.options.find((option) => option.isDefault === true)?.id,
         "build",
@@ -436,39 +421,23 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
   it.effect("includes OpenCode skills in the provider snapshot", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {
-        providerList: {
-          connected: ["openai"],
-          all: [
-            {
-              id: "openai",
-              name: "OpenAI",
-              models: {
-                "gpt-5.4": {
-                  id: "gpt-5.4",
-                  name: "GPT-5.4",
-                  variants: {},
-                },
-              },
-            },
-          ],
-          default: {},
-        },
-        agents: [],
+        ...EMPTY_INVENTORY,
+        models: [GPT_MODEL],
         skills: [
           {
             name: "openclaw-review",
             description: "Review OpenClaw workflow changes.",
-            location: "/Users/test/.agents/skills/openclaw-review/SKILL.md",
+            path: "/Users/test/.agents/skills/openclaw-review/SKILL.md",
           },
           {
             name: "openclaw-triage",
             description: "Triage OpenClaw routing issues.",
-            location: "/Users/test/.agents/skills/openclaw-triage/SKILL.md",
+            path: "/Users/test/.agents/skills/openclaw-triage/SKILL.md",
           },
           {
-            name: "missing-location",
+            name: "missing-path",
             description: "This incomplete SDK row should be skipped.",
-            location: "",
+            path: "",
           },
         ],
       };
@@ -507,12 +476,11 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       NodeAssert.deepEqual(runtimeMock.state.sdkClientInputs, [
         {
           baseUrl: "http://127.0.0.1:4301",
-          directory: process.cwd(),
           serverPassword: "secret-password",
         },
       ]);
       NodeAssert.equal(runtimeMock.state.closeCalls, 1);
-      NodeAssert.equal(runtimeMock.state.inventoryCwd, null);
+      NodeAssert.equal(runtimeMock.state.inventoryCwd, process.cwd());
     }),
   );
 
@@ -525,7 +493,6 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       NodeAssert.deepEqual(runtimeMock.state.sdkClientInputs, [
         {
           baseUrl: "http://127.0.0.1:4301",
-          directory: process.cwd(),
           serverPassword: "environment-password",
         },
       ]);
@@ -569,11 +536,10 @@ it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (i
         { OPENCODE_SERVER_PASSWORD: "local-secret" },
       );
 
-      NodeAssert.equal(snapshot.version, "1.14.19");
+      NodeAssert.equal(snapshot.version, "2.0.8");
       NodeAssert.deepEqual(runtimeMock.state.sdkClientInputs, [
         {
           baseUrl: "http://127.0.0.1:9999",
-          directory: process.cwd(),
         },
       ]);
     }),
@@ -582,7 +548,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (i
   it.effect("rejects an unsupported server before loading inventory", () =>
     Effect.gen(function* () {
       runtimeMock.state.connectionError = new Error(
-        "OpenCode v1.14.18 is too old. Upgrade to v1.14.19 or newer.",
+        "OpenCode v1.14.19 is too old. Upgrade to v2.0.0 or newer.",
       );
       const snapshot = yield* checkProvider(
         makeOpenCodeSettings({ serverUrl: "http://127.0.0.1:9999" }),
@@ -590,7 +556,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (i
 
       NodeAssert.equal(snapshot.status, "error");
       NodeAssert.equal(snapshot.models.length, 0);
-      NodeAssert.match(snapshot.message ?? "", /v1\.14\.18 is too old/);
+      NodeAssert.match(snapshot.message ?? "", /v1\.14\.19 is too old/);
       NodeAssert.equal(runtimeMock.state.sdkClientInputs.length, 0);
     }),
   );
