@@ -474,6 +474,17 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
+  it("preserves approved release-age exceptions in staged installs", () => {
+    const minimumReleaseAgeExclude = ["electron@44.4.2", "@opencode/client@2.0.8"];
+    assert.deepStrictEqual(
+      createStageWorkspaceConfig({ platform: "mac", arch: "arm64", minimumReleaseAgeExclude }),
+      {
+        supportedArchitectures: { os: ["darwin"], cpu: ["arm64"] },
+        minimumReleaseAgeExclude,
+      },
+    );
+  });
+
   it("stages pnpm 11 allowBuilds and patchedDependencies in the workspace yaml", () => {
     assert.deepStrictEqual(
       createStageWorkspaceConfig({

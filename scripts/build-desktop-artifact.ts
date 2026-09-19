@@ -64,6 +64,7 @@ const WorkspaceConfig = Schema.Struct({
   catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   overrides: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   patchedDependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  minimumReleaseAgeExclude: Schema.optional(Schema.Array(Schema.String)),
   allowBuilds: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
 });
 type WorkspaceConfig = typeof WorkspaceConfig.Type;
@@ -77,6 +78,7 @@ const StageWorkspaceConfig = Schema.Struct({
   // pnpm 11 only reads these from pnpm-workspace.yaml (not package.json#pnpm).
   // Without allowBuilds the staged `vp install --prod` fails with
   // ERR_PNPM_IGNORED_BUILDS for packages that have lifecycle scripts.
+  minimumReleaseAgeExclude: Schema.optional(Schema.Array(Schema.String)),
   allowBuilds: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
   patchedDependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   overrides: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -1475,6 +1477,7 @@ const stageClerkPasskeyNativeBinaries = Effect.fn("stageClerkPasskeyNativeBinari
 export function createStageWorkspaceConfig(input: {
   readonly platform: typeof BuildPlatform.Type;
   readonly arch: typeof BuildArch.Type;
+  readonly minimumReleaseAgeExclude?: ReadonlyArray<string>;
   readonly allowBuilds?: Record<string, boolean>;
   readonly patchedDependencies?: Record<string, string>;
   readonly overrides?: Record<string, string>;
@@ -1499,6 +1502,9 @@ export function createStageWorkspaceConfig(input: {
 
   return {
     supportedArchitectures,
+    ...(input.minimumReleaseAgeExclude?.length
+      ? { minimumReleaseAgeExclude: input.minimumReleaseAgeExclude }
+      : {}),
     ...(allowBuilds && Object.keys(allowBuilds).length > 0 ? { allowBuilds } : {}),
     ...(patchedDependencies && Object.keys(patchedDependencies).length > 0
       ? { patchedDependencies }
@@ -2882,6 +2888,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
   readonly appVersion: string;
   readonly runtimeExternalDependencies: Record<string, string>;
   readonly fffNodeVersion: string;
+  readonly minimumReleaseAgeExclude: ReadonlyArray<string>;
   readonly allowBuilds: Record<string, boolean>;
   readonly patchedDependencies: Record<string, string>;
   readonly overrides: Record<string, string>;
@@ -2919,6 +2926,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
     ...createStageWorkspaceConfig({
       platform: "win",
       arch: input.arch,
+      minimumReleaseAgeExclude: input.minimumReleaseAgeExclude,
       allowBuilds: input.allowBuilds,
       patchedDependencies: sidecarPatchedDependencies,
       overrides: input.overrides,
@@ -3671,6 +3679,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageWorkspaceConfig = createStageWorkspaceConfig({
     platform: options.platform,
     arch: options.arch,
+    minimumReleaseAgeExclude: workspaceConfig.minimumReleaseAgeExclude ?? [],
     allowBuilds: workspaceAllowBuilds,
     patchedDependencies: stagePatchedDependencies,
     overrides: resolvedOverrides,
@@ -3708,6 +3717,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       appVersion,
       runtimeExternalDependencies: resolvedServerRuntimeExternalDependencies,
       fffNodeVersion: serverPackageJson.dependencies["@ff-labs/fff-node"],
+      minimumReleaseAgeExclude: workspaceConfig.minimumReleaseAgeExclude ?? [],
       allowBuilds: workspaceAllowBuilds,
       patchedDependencies: workspacePatchedDependencies,
       overrides: resolvedOverrides,
