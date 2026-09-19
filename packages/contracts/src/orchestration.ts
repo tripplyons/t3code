@@ -857,6 +857,16 @@ export const OrchestrationProjectShell = Schema.Struct({
 });
 export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 
+/** Bounded activity text for thread lists; full message and tool bodies stay in thread detail. */
+export const THREAD_ACTIVITY_PREVIEW_MAX_CHARS = 480;
+export const ThreadActivityPreview = Schema.Struct({
+  kind: Schema.Literals(["agent", "tool"]),
+  // SQLite substr counts code points; Schema string length counts UTF-16 units.
+  text: Schema.String.check(Schema.isMaxLength(THREAD_ACTIVITY_PREVIEW_MAX_CHARS * 2)),
+  createdAt: IsoDateTime,
+});
+export type ThreadActivityPreview = typeof ThreadActivityPreview.Type;
+
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -891,6 +901,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   session: Schema.NullOr(OrchestrationSession),
+  latestActivityPreview: Schema.optional(Schema.NullOr(ThreadActivityPreview)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,

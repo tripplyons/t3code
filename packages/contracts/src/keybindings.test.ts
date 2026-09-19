@@ -30,6 +30,11 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsed.command, "terminal.toggle");
 
+    for (const command of ["board.open", "board.toggle"] as const) {
+      const rule = yield* decode(KeybindingRule, { key: "mod+shift+b", command });
+      assert.strictEqual(rule.command, command);
+    }
+
     const parsedSidebarToggle = yield* decode(KeybindingRule, {
       key: "mod+b",
       command: "sidebar.toggle",

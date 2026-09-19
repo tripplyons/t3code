@@ -1,5 +1,7 @@
 import {
   AgentSessionImportSource,
+  ThreadActivityPreview,
+  THREAD_ACTIVITY_PREVIEW_MAX_CHARS,
   ApprovalRequestId,
   ChatAttachment,
   OrchestrationMessageContext,
@@ -128,6 +130,7 @@ const ProjectionThreadPullRequestDbRowSchema = ProjectionThreadPullRequest.mapFi
 );
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
+    latestActivityPreview: Schema.NullOr(Schema.fromJsonString(ThreadActivityPreview)),
     modelSelection: Schema.fromJsonString(ModelSelection),
     titleState: Schema.NullOr(Schema.fromJsonString(ThreadTitleState)),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
@@ -494,6 +497,30 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const sql = yield* SqlClient.SqlClient;
+  // Each branch uses a partial index and returns one bounded candidate. This also
+  // reflects edits and reverts without maintaining a second copy of preview text.
+  const latestActivityPreviewSql = sql`(
+    SELECT json_object('kind', kind, 'text', text, 'createdAt', createdAt)
+    FROM (
+      SELECT * FROM (
+        SELECT 'agent' AS kind, substr(text, 1, ${THREAD_ACTIVITY_PREVIEW_MAX_CHARS}) AS text,
+          created_at AS createdAt, message_id AS id
+        FROM projection_thread_messages
+        WHERE thread_id = projection_threads.thread_id AND role = 'assistant' AND text <> ''
+        ORDER BY created_at DESC, message_id DESC LIMIT 1
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT 'tool' AS kind, substr(summary, 1, ${THREAD_ACTIVITY_PREVIEW_MAX_CHARS}) AS text,
+          created_at AS createdAt, activity_id AS id
+        FROM projection_thread_activities
+        WHERE thread_id = projection_threads.thread_id
+          AND kind IN ('tool.started', 'tool.updated', 'tool.completed') AND summary <> ''
+        ORDER BY created_at DESC, activity_id DESC LIMIT 1
+      )
+    )
+    ORDER BY createdAt DESC, id DESC LIMIT 1
+  )`;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
   const repositoryIdentityResolutionConcurrency = 4;
   const resolveRepositoryIdentitiesForProjects = Effect.fn(
@@ -589,6 +616,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
+          ${latestActivityPreviewSql} AS "latestActivityPreview",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -630,6 +658,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
+          ${latestActivityPreviewSql} AS "latestActivityPreview",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -703,6 +732,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
+          ${latestActivityPreviewSql} AS "latestActivityPreview",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -1268,6 +1298,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
+          ${latestActivityPreviewSql} AS "latestActivityPreview",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -2745,6 +2776,7 @@ pending_approval_requests AS (
                         titleRegeneration: mapTitleRegeneration(row),
                         titleState: row.titleState,
                         session: sessionByThread.get(row.threadId) ?? null,
+                        latestActivityPreview: row.latestActivityPreview,
                         latestUserMessageAt: row.latestUserMessageAt,
                         hasPendingApprovals: row.pendingApprovalCount > 0,
                         hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -2908,6 +2940,7 @@ pending_approval_requests AS (
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   session: sessionByThread.get(row.threadId) ?? null,
+                  latestActivityPreview: row.latestActivityPreview,
                   latestUserMessageAt: row.latestUserMessageAt,
                   hasPendingApprovals: row.pendingApprovalCount > 0,
                   hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -3264,6 +3297,7 @@ pending_approval_requests AS (
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
+        latestActivityPreview: threadRow.value.latestActivityPreview,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,

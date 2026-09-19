@@ -3,6 +3,12 @@
 Customize shortcuts in **Settings → Keybindings** on web and desktop. That page
 also lists the command IDs and defaults available in your version.
 
+## Board
+
+On web and desktop, assign shortcuts to **Board: Open** (`board.open`) and
+**Board: Toggle** (`board.toggle`) in Settings → Keybindings. Neither has a default
+shortcut. Toggle opens the board or returns to the page you were on before it.
+
 ## Composer controls
 
 In **Settings → General → Send shortcut**, choose whether Enter sends, requires

@@ -10035,7 +10035,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           causationEventId: null,
           correlationId: null,
           metadata: {},
-          type: "thread.message-sent",
+          type: sequence === 20 ? "thread.activity-appended" : "thread.message-sent",
           payload: {} as never,
         }) satisfies OrchestrationEvent;
 
@@ -10062,7 +10062,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             getThreadShellById: (threadId) =>
               Effect.sync(() => {
                 shellFetches.push(threadId);
-                return Option.some(makeDefaultOrchestrationThreadShell({ id: threadId }));
+                return Option.some(
+                  makeDefaultOrchestrationThreadShell({
+                    id: threadId,
+                    latestActivityPreview:
+                      threadId === busyThreadId
+                        ? { kind: "tool", text: "vp test run", createdAt: now }
+                        : { kind: "agent", text: "Ready for review", createdAt: now },
+                  }),
+                );
               }),
           },
         },
@@ -10111,6 +10119,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         .flatMap((item) => (item.kind === "thread-upserted" ? [item.thread.id] : []));
       assert.include(liveUpsertedIds, busyThreadId);
       assert.include(liveUpsertedIds, newThreadId);
+      const previews = Array.from(items).flatMap((item) =>
+        item.kind === "thread-upserted" ? [item.thread.latestActivityPreview] : [],
+      );
+      assert.deepInclude(previews, { kind: "tool", text: "vp test run", createdAt: now });
+      assert.deepInclude(previews, { kind: "agent", text: "Ready for review", createdAt: now });
       assert.isBelow(shellFetches.filter((id) => id === busyThreadId).length, 20);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );

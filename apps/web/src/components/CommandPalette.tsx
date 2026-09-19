@@ -41,6 +41,7 @@ import {
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
+  Columns3Icon,
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CornerLeftUpIcon,
@@ -57,6 +58,7 @@ import {
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
+import { dispatchBoardCommand } from "../boardNavigation";
 import {
   useCallback,
   useDeferredValue,
@@ -2017,6 +2019,30 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:board",
+    searchTerms: ["board", "unsettled", "agents", "status"],
+    title: "Open thread board",
+    icon: <Columns3Icon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "board.open",
+    run: async () => {
+      dispatchBoardCommand("board.open");
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:board-toggle",
+    searchTerms: ["board", "toggle", "return", "threads"],
+    title: "Toggle thread board",
+    icon: <Columns3Icon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "board.toggle",
+    run: async () => {
+      dispatchBoardCommand("board.toggle");
+    },
+  });
 
   actionItems.push({
     kind: "action",

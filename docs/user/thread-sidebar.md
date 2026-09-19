@@ -25,6 +25,16 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## View unsettled work on the board
+
+On web and desktop, open **Board** from the sidebar or choose **Open thread board**
+in the command palette. See which agents need your attention or are still working,
+and filter by project across connected environments. Snoozed, settled, and archived
+threads are hidden. Snoozed threads return when they wake.
+
+Open a card to continue its conversation. Use the existing thread controls to
+settle or snooze work.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
