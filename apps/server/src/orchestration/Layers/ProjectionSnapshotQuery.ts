@@ -1,6 +1,7 @@
 import {
   AgentSessionImportSource,
   ThreadActivityPreview,
+  THREAD_ACTIVITY_PREVIEW_COUNT,
   THREAD_ACTIVITY_PREVIEW_MAX_CHARS,
   ApprovalRequestId,
   ChatAttachment,
@@ -130,7 +131,7 @@ const ProjectionThreadPullRequestDbRowSchema = ProjectionThreadPullRequest.mapFi
 );
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
-    latestActivityPreview: Schema.NullOr(Schema.fromJsonString(ThreadActivityPreview)),
+    recentActivityPreviews: Schema.fromJsonString(Schema.Array(ThreadActivityPreview)),
     modelSelection: Schema.fromJsonString(ModelSelection),
     titleState: Schema.NullOr(Schema.fromJsonString(ThreadTitleState)),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
@@ -499,15 +500,19 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   // Use the partial message index and read current text so edits and reverts
   // are reflected without maintaining a second copy of the preview.
-  const latestActivityPreviewSql = sql`(
-    SELECT json_object(
-      'kind', 'agent',
-      'text', substr(text, 1, ${THREAD_ACTIVITY_PREVIEW_MAX_CHARS}),
-      'createdAt', created_at
+  const recentActivityPreviewsSql = sql`(
+    SELECT json_group_array(json(preview))
+    FROM (
+      SELECT json_object(
+        'kind', CASE role WHEN 'reasoning' THEN 'reasoning' ELSE 'agent' END,
+        'text', substr(text, 1, ${THREAD_ACTIVITY_PREVIEW_MAX_CHARS}),
+        'createdAt', created_at
+      ) AS preview
+      FROM projection_thread_messages
+      WHERE thread_id = projection_threads.thread_id
+        AND role IN ('assistant', 'reasoning') AND text <> ''
+      ORDER BY created_at DESC, message_id DESC LIMIT ${THREAD_ACTIVITY_PREVIEW_COUNT}
     )
-    FROM projection_thread_messages
-    WHERE thread_id = projection_threads.thread_id AND role = 'assistant' AND text <> ''
-    ORDER BY created_at DESC, message_id DESC LIMIT 1
   )`;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
   const repositoryIdentityResolutionConcurrency = 4;
@@ -604,7 +609,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
-          ${latestActivityPreviewSql} AS "latestActivityPreview",
+          ${recentActivityPreviewsSql} AS "recentActivityPreviews",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -646,7 +651,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
-          ${latestActivityPreviewSql} AS "latestActivityPreview",
+          ${recentActivityPreviewsSql} AS "recentActivityPreviews",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -720,7 +725,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
-          ${latestActivityPreviewSql} AS "latestActivityPreview",
+          ${recentActivityPreviewsSql} AS "recentActivityPreviews",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -1286,7 +1291,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
-          ${latestActivityPreviewSql} AS "latestActivityPreview",
+          ${recentActivityPreviewsSql} AS "recentActivityPreviews",
           latest_user_message_at AS "latestUserMessageAt",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
@@ -2764,7 +2769,7 @@ pending_approval_requests AS (
                         titleRegeneration: mapTitleRegeneration(row),
                         titleState: row.titleState,
                         session: sessionByThread.get(row.threadId) ?? null,
-                        latestActivityPreview: row.latestActivityPreview,
+                        recentActivityPreviews: row.recentActivityPreviews,
                         latestUserMessageAt: row.latestUserMessageAt,
                         hasPendingApprovals: row.pendingApprovalCount > 0,
                         hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -2928,7 +2933,7 @@ pending_approval_requests AS (
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   session: sessionByThread.get(row.threadId) ?? null,
-                  latestActivityPreview: row.latestActivityPreview,
+                  recentActivityPreviews: row.recentActivityPreviews,
                   latestUserMessageAt: row.latestUserMessageAt,
                   hasPendingApprovals: row.pendingApprovalCount > 0,
                   hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -3285,7 +3290,7 @@ pending_approval_requests AS (
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
-        latestActivityPreview: threadRow.value.latestActivityPreview,
+        recentActivityPreviews: threadRow.value.recentActivityPreviews,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,

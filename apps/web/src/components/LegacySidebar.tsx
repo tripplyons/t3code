@@ -109,6 +109,7 @@ import {
 } from "../keybindings";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { useShortcutModifierState } from "../shortcutModifierState";
+import { useThreadJumpHintStore } from "../threadJumpHintStore";
 import { ensureLocalApi, readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
@@ -3561,6 +3562,11 @@ export default function LegacySidebar() {
   useEffect(() => {
     updateThreadJumpHintsVisibility(shouldShowThreadJumpHintsNow);
   }, [shouldShowThreadJumpHintsNow, updateThreadJumpHintsVisibility]);
+  const setVisibleJumpLabels = useThreadJumpHintStore((state) => state.setVisibleLabels);
+  useEffect(() => {
+    setVisibleJumpLabels(visibleThreadJumpLabelByKey);
+    return () => setVisibleJumpLabels(null);
+  }, [setVisibleJumpLabels, visibleThreadJumpLabelByKey]);
 
   useEffect(() => {
     const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {

@@ -19,7 +19,7 @@ const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
   Layer.provideMerge(SqlitePersistenceMemory),
 );
 
-it.effect("selects bounded agent-only previews across snapshots, live refetches, and reverts", () =>
+it.effect("selects bounded recent agent and reasoning previews across snapshots and reverts", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const query = yield* ProjectionSnapshotQuery;
@@ -31,58 +31,71 @@ it.effect("selects bounded agent-only previews across snapshots, live refetches,
       (thread_id, project_id, title, model_selection_json, created_at, updated_at)
       VALUES (${threadId}, 'preview-project', 'Task', '{"instanceId":"codex","model":"gpt-5"}', '2026-09-19T00:00:00Z', '2026-09-19T00:00:00Z')`;
     const read = Effect.fn(function* () {
-      return Option.getOrThrow(yield* query.getThreadShellById(threadId)).latestActivityPreview;
+      return Option.getOrThrow(yield* query.getThreadShellById(threadId)).recentActivityPreviews;
     });
-    assert.isNull(yield* read());
+    const texts = Effect.fn(function* () {
+      return (yield* read())?.map((preview) => preview.text);
+    });
+    assert.deepEqual(yield* read(), []);
     yield* sql`INSERT INTO projection_thread_messages
       (message_id, thread_id, role, text, is_streaming, created_at, updated_at)
       VALUES
       ('assistant', ${threadId}, 'assistant', 'Checking the implementation', 1, '2026-09-19T00:00:01Z', '2026-09-19T00:00:01Z'),
       ('user', ${threadId}, 'user', 'Newer user text is not an agent preview', 0, '2026-09-19T00:00:09Z', '2026-09-19T00:00:09Z'),
       ('empty', ${threadId}, 'assistant', '', 1, '2026-09-19T00:00:10Z', '2026-09-19T00:00:10Z')`;
-    assert.deepEqual(yield* read(), {
-      kind: "agent",
-      text: "Checking the implementation",
-      createdAt: "2026-09-19T00:00:01Z",
-    });
+    assert.deepEqual(yield* read(), [
+      { kind: "agent", text: "Checking the implementation", createdAt: "2026-09-19T00:00:01Z" },
+    ]);
     yield* sql`UPDATE projection_thread_messages SET text = text || ' and tests' WHERE message_id = 'assistant'`;
-    assert.equal((yield* read())?.text, "Checking the implementation and tests");
-    for (const [index, kind] of ["tool.started", "tool.updated", "tool.completed"].entries()) {
-      const createdAt = `2026-09-19T00:00:0${index + 2}Z`;
-      yield* sql`INSERT INTO projection_thread_activities
-        (activity_id, thread_id, tone, kind, summary, payload_json, created_at)
-        VALUES (${kind}, ${threadId}, 'tool', ${kind}, 'vp test run', '{"data":"large output stays out of the shell"}', ${createdAt})`;
-      const expected = {
-        kind: "agent",
-        text: "Checking the implementation and tests",
-        createdAt: "2026-09-19T00:00:01Z",
-      };
-      assert.deepEqual(yield* read(), expected);
-      assert.deepEqual(
-        (yield* query.getShellSnapshot()).threads[0]?.latestActivityPreview,
-        expected,
-      );
-    }
+    assert.deepEqual(yield* texts(), ["Checking the implementation and tests"]);
     yield* sql`INSERT INTO projection_thread_activities
       (activity_id, thread_id, tone, kind, summary, payload_json, created_at)
-      VALUES ('noise', ${threadId}, 'info', 'context-window.updated', 'Not a tool call', '{}', '2026-09-19T00:00:20Z')`;
-    assert.equal((yield* read())?.text, "Checking the implementation and tests");
+      VALUES ('tool', ${threadId}, 'tool', 'tool.completed', 'vp test run', '{"data":"large output stays out of the shell"}', '2026-09-19T00:00:11Z')`;
+    assert.deepEqual(yield* texts(), ["Checking the implementation and tests"]);
+    yield* sql`INSERT INTO projection_thread_messages
+      (message_id, thread_id, role, text, is_streaming, created_at, updated_at)
+      VALUES
+      ('reasoning:summary:1', ${threadId}, 'reasoning', 'Weighing the fix', 0, '2026-09-19T00:00:12Z', '2026-09-19T00:00:12Z'),
+      ('assistant-2', ${threadId}, 'assistant', 'Fix applied', 0, '2026-09-19T00:00:13Z', '2026-09-19T00:00:13Z'),
+      ('reasoning:summary:2', ${threadId}, 'reasoning', 'Planning the tests', 1, '2026-09-19T00:00:14Z', '2026-09-19T00:00:14Z')`;
+    // Newest first, and the oldest of four drops off.
+    const expected = [
+      { kind: "reasoning", text: "Planning the tests", createdAt: "2026-09-19T00:00:14Z" },
+      { kind: "agent", text: "Fix applied", createdAt: "2026-09-19T00:00:13Z" },
+      { kind: "reasoning", text: "Weighing the fix", createdAt: "2026-09-19T00:00:12Z" },
+    ] as const;
+    assert.deepEqual(yield* read(), expected);
+    assert.deepEqual(
+      (yield* query.getShellSnapshot()).threads[0]?.recentActivityPreviews,
+      expected,
+    );
     // A long Unicode result must remain bounded and decode without losing the shell.
     const longText = "🧪".repeat(10_000);
     yield* sql`INSERT INTO projection_thread_messages
       (message_id, thread_id, role, text, is_streaming, created_at, updated_at)
       VALUES ('result', ${threadId}, 'assistant', ${longText}, 0, '2026-09-19T00:00:30Z', '2026-09-19T00:00:30Z')`;
-    assert.equal((yield* read())?.text, "🧪".repeat(THREAD_ACTIVITY_PREVIEW_MAX_CHARS));
+    assert.equal((yield* texts())?.[0], "🧪".repeat(THREAD_ACTIVITY_PREVIEW_MAX_CHARS));
     yield* sql`UPDATE projection_threads SET archived_at = '2026-09-19T00:00:31Z' WHERE thread_id = ${threadId}`;
     assert.equal(
-      (yield* query.getArchivedShellSnapshot()).threads[0]?.latestActivityPreview?.text,
+      (yield* query.getArchivedShellSnapshot()).threads[0]?.recentActivityPreviews?.[0]?.text,
       "🧪".repeat(THREAD_ACTIVITY_PREVIEW_MAX_CHARS),
     );
     yield* sql`UPDATE projection_threads SET archived_at = NULL WHERE thread_id = ${threadId}`;
-    // Revert removes records; the preview must follow the remaining history.
+    // Revert removes records; the previews must follow the remaining history.
     yield* sql`DELETE FROM projection_thread_messages WHERE message_id = 'result'`;
-    assert.equal((yield* read())?.text, "Checking the implementation and tests");
+    assert.deepEqual(yield* read(), expected);
     yield* sql`DELETE FROM projection_thread_messages WHERE thread_id = ${threadId}`;
-    assert.isNull(yield* read());
+    assert.deepEqual(yield* read(), []);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("reads previews through the partial message index", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN
+      SELECT text FROM projection_thread_messages
+      WHERE thread_id = 'thread' AND role IN ('assistant', 'reasoning') AND text <> ''
+      ORDER BY created_at DESC, message_id DESC LIMIT 3`;
+    assert.include(plan.map((row) => row.detail).join("\n"), "idx_thread_preview_message");
   }).pipe(Effect.provide(layer)),
 );

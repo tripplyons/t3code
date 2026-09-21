@@ -20,6 +20,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
+import { useThreadJumpHintStore } from "../threadJumpHintStore";
 
 function ThreadBoard() {
   const threads = useThreadShells();
@@ -49,6 +50,8 @@ function ThreadBoard() {
     );
     return () => window.clearTimeout(timer);
   }, [threads, wakeTime]);
+  // The sidebar owns the jump order and the shortcuts; cards only mirror its hints.
+  const jumpLabelByKey = useThreadJumpHintStore((state) => state.visibleLabelByKey);
   const projectByKey = useMemo(
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
@@ -99,21 +102,37 @@ function ThreadBoard() {
                   const status = resolveSidebarThreadStatus(thread);
                   const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
                   const environment = environmentById.get(thread.environmentId);
+                  const threadKey = `${thread.environmentId}:${thread.id}`;
+                  const jumpLabel = jumpLabelByKey.get(threadKey);
                   return (
-                    <li key={`${thread.environmentId}:${thread.id}`}>
+                    <li key={threadKey}>
                       <Link
                         to="/$environmentId/$threadId"
                         params={{ environmentId: thread.environmentId, threadId: thread.id }}
-                        className="block rounded-lg border bg-background p-3 outline-none hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
+                        className="relative block rounded-lg border bg-background p-3 outline-none hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
                       >
+                        {jumpLabel && (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute right-2 top-2 inline-flex h-5 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+                          >
+                            {jumpLabel}
+                          </span>
+                        )}
                         <div className="break-words text-sm font-medium">{thread.title}</div>
-                        {thread.latestActivityPreview?.kind === "agent" && (
-                          <div className="mt-2 text-sm text-muted-foreground">
-                            <span className="text-xs font-medium">Agent</span>
-                            <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words">
-                              {thread.latestActivityPreview.text}
-                            </p>
-                          </div>
+                        {thread.recentActivityPreviews?.toReversed().map(
+                          (preview, index) =>
+                            preview.kind !== "tool" && (
+                              // oxlint-disable-next-line react/no-array-index-key -- previews carry no id
+                              <div key={index} className="mt-2 text-sm">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  {preview.kind === "reasoning" ? "Thinking" : "Agent"}
+                                </span>
+                                <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words">
+                                  {preview.text}
+                                </p>
+                              </div>
+                            ),
                         )}
                         <div className="mt-2 break-words text-xs text-muted-foreground">
                           {project?.title ?? "Unknown project"} ·{" "}

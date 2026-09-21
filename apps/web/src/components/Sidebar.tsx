@@ -96,6 +96,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
+import { useThreadJumpHintStore } from "../threadJumpHintStore";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -4387,6 +4388,11 @@ export default function Sidebar() {
   useEffect(() => {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
+  const setVisibleJumpLabels = useThreadJumpHintStore((state) => state.setVisibleLabels);
+  useEffect(() => {
+    setVisibleJumpLabels(showThreadJumpHints ? jumpLabelByKey : null);
+    return () => setVisibleJumpLabels(null);
+  }, [jumpLabelByKey, setVisibleJumpLabels, showThreadJumpHints]);
 
   // New thread defaults to the project you're in (active thread's project,
   // falling back to the top project) — same resolution the command palette

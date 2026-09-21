@@ -9,6 +9,9 @@ On web and desktop, assign shortcuts to **Board: Open** (`board.open`) and
 **Board: Toggle** (`board.toggle`) in Settings → Keybindings. Neither has a default
 shortcut. Toggle opens the board or returns to the page you were on before it.
 
+Your thread jump shortcuts follow the sidebar's order on the board too. Hold their
+modifier to see the shortcut on each card that has one.
+
 ## Composer controls
 
 In **Settings → General → Send shortcut**, choose whether Enter sends, requires

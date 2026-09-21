@@ -622,11 +622,13 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             lastError: null,
             updatedAt: "2026-02-24T00:00:07.000Z",
           },
-          latestActivityPreview: {
-            kind: "agent",
-            text: "hello from projection",
-            createdAt: "2026-02-24T00:00:04.000Z",
-          },
+          recentActivityPreviews: [
+            {
+              kind: "agent",
+              text: "hello from projection",
+              createdAt: "2026-02-24T00:00:04.000Z",
+            },
+          ],
           latestUserMessageAt: "2026-02-24T00:00:04.000Z",
           hasPendingApprovals: true,
           hasPendingUserInput: false,
