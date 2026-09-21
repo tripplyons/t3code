@@ -2222,3 +2222,75 @@ code {
 .composer-tiptap li[data-checked] > div > p {
   margin: 0;
 }
+
+/* Board cards keep the most recent agent and thinking previews. When a new one
+   lands, the row it displaced collapses and slides up while the arrival opens
+   and rises from below, so the stack reads as scrolling rather than cutting.
+   Both run once per arrival and the card height stays put during the swap. */
+.board-preview-row {
+  grid-template-rows: 1fr;
+}
+
+.board-preview-row[data-phase="entering"] {
+  animation: board-preview-enter 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.board-preview-row[data-phase="entering"] .board-preview-row-body {
+  animation: board-preview-body-enter 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.board-preview-row[data-phase="exiting"] {
+  grid-template-rows: 0fr;
+  animation: board-preview-exit 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.board-preview-row[data-phase="exiting"] .board-preview-row-body {
+  animation: board-preview-body-exit 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes board-preview-enter {
+  from {
+    grid-template-rows: 0fr;
+  }
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+@keyframes board-preview-body-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes board-preview-exit {
+  from {
+    grid-template-rows: 1fr;
+  }
+  to {
+    grid-template-rows: 0fr;
+  }
+}
+
+@keyframes board-preview-body-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-preview-row[data-phase],
+  .board-preview-row[data-phase] .board-preview-row-body {
+    animation: none;
+  }
+}

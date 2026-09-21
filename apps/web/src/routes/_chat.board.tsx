@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
+import { BoardActivityPreviews } from "../components/BoardActivityPreviews";
 import { resolveSidebarThreadStatus } from "../components/Sidebar.logic";
 import { buildThreadBoard } from "../components/threadBoard";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
@@ -120,20 +121,7 @@ function ThreadBoard() {
                           </span>
                         )}
                         <div className="break-words text-sm font-medium">{thread.title}</div>
-                        {thread.recentActivityPreviews?.toReversed().map(
-                          (preview, index) =>
-                            preview.kind !== "tool" && (
-                              // oxlint-disable-next-line react/no-array-index-key -- previews carry no id
-                              <div key={index} className="mt-2 text-sm">
-                                <span className="text-xs font-medium text-muted-foreground">
-                                  {preview.kind === "reasoning" ? "Thinking" : "Agent"}
-                                </span>
-                                <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words">
-                                  {preview.text}
-                                </p>
-                              </div>
-                            ),
-                        )}
+                        <BoardActivityPreviews previews={thread.recentActivityPreviews} />
                         <div className="mt-2 break-words text-xs text-muted-foreground">
                           {project?.title ?? "Unknown project"} ·{" "}
                           {environment?.label ?? thread.environmentId}
