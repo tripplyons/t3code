@@ -100,9 +100,9 @@ export function getThreadSortTimestamp(
 /**
  * Sort anchor for the active thread list: creation time, re-anchored to
  * unsettledAt when the thread last re-entered the active list (an explicit
- * un-settle, or a settled thread waking on activity). The list stays static
- * between lifecycle transitions, but an un-settled thread surfaces at the
- * top instead of sinking back to its creation-order slot. Shared by web and
+ * un-settle, or a settled thread waking on activity). Within its status group,
+ * an un-settled thread surfaces at the top instead of sinking back to its
+ * creation-order slot. Shared by web and
  * mobile so both render the same order. Malformed timestamps sink to 0.
  */
 function activeThreadAnchorTimestampMs(thread: {
@@ -317,10 +317,32 @@ export function sortPinnedThreadsByOrderKey<
   return [...keyed, ...keyless];
 }
 
-/** New and reopened threads lead the active list. Arranged threads follow
-    their saved keys; activity leaves both groups in place. */
+type ThreadBoardStatusInput = Partial<
+  Pick<
+    OrchestrationThreadShell,
+    "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
+  >
+>;
+
+/** Shared by the board and active lists on every client. */
+export function resolveThreadBoardGroup(
+  thread: ThreadBoardStatusInput,
+): "needs-you" | "working" | "idle" {
+  if (thread.hasPendingApprovals || thread.hasPendingUserInput) return "needs-you";
+  if (thread.session?.status === "running" || thread.session?.status === "starting")
+    return "working";
+  if (thread.session?.status === "error") return "needs-you";
+  if (thread.backgroundLiveness === "working" || thread.backgroundLiveness === "monitoring")
+    return "working";
+  return "idle";
+}
+
+const THREAD_BOARD_PRIORITY = { "needs-you": 0, working: 1, idle: 2 };
+
+/** Awaiting, working, then idle, matching the board. Within each group,
+    new and reopened threads precede the saved arrangement. */
 export function sortActiveThreadsByOrderKey<
-  T extends {
+  T extends ThreadBoardStatusInput & {
     readonly id: string;
     readonly createdAt: string;
     readonly unsettledAt?: string | null | undefined;
@@ -336,6 +358,10 @@ export function sortActiveThreadsByOrderKey<
     }
   }
   return [...threads].sort((left, right) => {
+    const priority =
+      THREAD_BOARD_PRIORITY[resolveThreadBoardGroup(left)] -
+      THREAD_BOARD_PRIORITY[resolveThreadBoardGroup(right)];
+    if (priority !== 0) return priority;
     const leftKey = left.activeOrderKey;
     const rightKey = right.activeOrderKey;
     if (leftKey == null && rightKey != null) return -1;

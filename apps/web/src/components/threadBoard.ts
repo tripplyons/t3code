@@ -1,8 +1,9 @@
+import { resolveThreadBoardGroup } from "@t3tools/client-runtime/state/thread-sort";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../types";
-import { resolveSidebarThreadStatus, sortThreadsForSidebar } from "./Sidebar.logic";
+import { sortThreadsForSidebar } from "./Sidebar.logic";
 
 export const THREAD_BOARD_COLUMNS = [
   { id: "needs-you", label: "Awaiting" },
@@ -17,10 +18,7 @@ export function resolveThreadBoardColumn(
   options: { now: string; snoozeSupported: boolean },
 ): BoardColumn | null {
   if (options.snoozeSupported && effectiveSnoozed(thread, options)) return null;
-  const status = resolveSidebarThreadStatus(thread);
-  if (status === "approval" || status === "input" || status === "failed") return "needs-you";
-  if (status === "working" || status === "monitoring") return "working";
-  return "idle";
+  return resolveThreadBoardGroup(thread);
 }
 
 export function buildThreadBoard(

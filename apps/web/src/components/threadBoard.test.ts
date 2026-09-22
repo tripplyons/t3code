@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import type { SidebarThreadSummary } from "../types";
+import { sortThreadsForSidebar } from "./Sidebar.logic";
 import { buildThreadBoard, resolveThreadBoardColumn } from "./threadBoard";
 
 const now = "2026-09-19T12:00:00.000Z";
@@ -46,6 +47,61 @@ const capabilities = {
 };
 
 describe("thread board", () => {
+  it("automatically sorts the sidebar in board order as threads change status", () => {
+    const rows = [
+      thread({ id: ThreadId.make("idle"), createdAt: "2026-09-20T12:00:00.000Z" }),
+      thread({ id: ThreadId.make("working"), backgroundLiveness: "working" }),
+      thread({ id: ThreadId.make("monitoring"), backgroundLiveness: "monitoring" }),
+      thread({ id: ThreadId.make("input"), hasPendingUserInput: true, activeOrderKey: "z" }),
+      thread({ id: ThreadId.make("approval"), hasPendingApprovals: true, activeOrderKey: "b" }),
+      thread({
+        id: ThreadId.make("error"),
+        backgroundLiveness: "working",
+        session: {
+          threadId: ThreadId.make("error"),
+          status: "error",
+          providerName: "Codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: "Failed",
+          updatedAt: now,
+        },
+      }),
+    ];
+    const boardIds = (threads: SidebarThreadSummary[]) =>
+      buildThreadBoard(threads, { now, projectKey: "", serverConfigs: new Map() }).flatMap(
+        (column) => column.threads.map((item) => item.id),
+      );
+    const sorted = sortThreadsForSidebar(rows).map((item) => item.id);
+    expect(sorted).toEqual(["error", "approval", "input", "monitoring", "working", "idle"]);
+    expect(sorted).toEqual(boardIds(rows));
+
+    const updated = rows.map((row) =>
+      row.id === "idle"
+        ? { ...row, hasPendingUserInput: true }
+        : row.id === "input"
+          ? { ...row, hasPendingUserInput: false }
+          : row,
+    );
+    expect(sortThreadsForSidebar(updated).map((item) => item.id)).toEqual([
+      "idle",
+      "error",
+      "approval",
+      "monitoring",
+      "working",
+      "input",
+    ]);
+    expect(sortThreadsForSidebar(updated).map((item) => item.id)).toEqual(boardIds(updated));
+    expect(rows.map((item) => item.id)).toEqual([
+      "idle",
+      "working",
+      "monitoring",
+      "input",
+      "approval",
+      "error",
+    ]);
+  });
+
   it("groups completed results and proposed plans with idle threads", () => {
     expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
     expect(resolveThreadBoardColumn(thread({ latestTurn: completed }), options)).toBe("idle");

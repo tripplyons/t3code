@@ -157,8 +157,8 @@ function parseTimestampMs(isoDate: string): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-/** The active order shared by web and native: new/reopened rows, then the
-    saved arrangement. Activity does not move a thread. */
+/** The active order shared by web and native: awaiting, working, then idle,
+    with the saved arrangement within each group. */
 export function sortThreadsForListV2<
   T extends {
     readonly id: string;
