@@ -238,6 +238,26 @@ const LegacyConfirmQuit = Schema.Boolean.pipe(
 
 const QuitConfirmationModeSetting = Schema.Union([QuitConfirmationMode, LegacyConfirmQuit]);
 
+export const FontSmoothingMode = Schema.Literals(["system", "balanced", "thin"]);
+export type FontSmoothingMode = typeof FontSmoothingMode.Type;
+const DEFAULT_FONT_SMOOTHING_MODE: FontSmoothingMode = "system";
+
+const LegacyFontSmoothing = Schema.Boolean.pipe(
+  Schema.decodeTo(
+    FontSmoothingMode,
+    SchemaTransformation.transform({
+      decode: (enabled): FontSmoothingMode => (enabled ? "thin" : "system"),
+      encode: (mode) => mode === "thin",
+    }),
+  ),
+);
+
+const FontSmoothingSetting = Schema.Union([FontSmoothingMode, LegacyFontSmoothing]);
+
+export const FontStrokeWidth = Schema.Literals([0.1, 0.2, 0.3, 0.4, 0.5]);
+export type FontStrokeWidth = typeof FontStrokeWidth.Type;
+const DEFAULT_FONT_STROKE_WIDTH: FontStrokeWidth = 0.2;
+
 /**
  * A user-chosen font family (a single name or a comma-separated list). Empty
  * means "use the app default"; clients compose their own fallback stacks.
@@ -381,9 +401,12 @@ export const ClientSettingsSchema = Schema.Struct({
   fontFamilyComposer: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilySans: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilyTerminal: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  // Grayscale `-webkit-font-smoothing: antialiased` (thinner strokes);
-  // disabling restores the platform's heavier default. No effect off macOS.
-  fontSmoothing: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  fontSmoothing: FontSmoothingSetting.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_FONT_SMOOTHING_MODE)),
+  ),
+  fontStrokeWidth: FontStrokeWidth.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_FONT_STROKE_WIDTH)),
+  ),
   // When the first-run welcome wizard finished (or was skipped), as an ISO
   // timestamp. `null` alone does not mean "show the wizard" — every install
   // that predates this field decodes to `null` — so the gate also requires an
@@ -1547,7 +1570,8 @@ export const ClientSettingsPatch = Schema.Struct({
   fontFamilyComposer: Schema.optionalKey(FontFamilyPreference),
   fontFamilySans: Schema.optionalKey(FontFamilyPreference),
   fontFamilyTerminal: Schema.optionalKey(FontFamilyPreference),
-  fontSmoothing: Schema.optionalKey(Schema.Boolean),
+  fontSmoothing: Schema.optionalKey(FontSmoothingSetting),
+  fontStrokeWidth: Schema.optionalKey(FontStrokeWidth),
   favorites: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({

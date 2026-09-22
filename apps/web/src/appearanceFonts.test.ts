@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  applyAppearanceFontVariables,
   areFontAdvancesMonospace,
   clampCodeFontSize,
   clampInterfaceFontSize,
@@ -10,6 +11,40 @@ import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
 } from "./appearanceFonts";
+
+describe("applyAppearanceFontVariables", () => {
+  it("switches between platform, balanced, and thin rendering", () => {
+    const properties = new Map<string, string>();
+    const root = {
+      style: {
+        setProperty: (name: string, value: string) => properties.set(name, value),
+        removeProperty: (name: string) => properties.delete(name),
+      },
+    } as unknown as HTMLElement;
+    const preferences = {
+      sans: "",
+      code: "GeistMono Nerd Font",
+      composer: "",
+      sizeInterface: 16,
+      sizePrompt: 14,
+      sizeCode: 14,
+      smoothing: "balanced" as const,
+      strokeWidth: 0.3,
+    };
+
+    applyAppearanceFontVariables(root, preferences);
+    expect(properties.get("-webkit-font-smoothing")).toBe("antialiased");
+    expect(properties.get("-webkit-text-stroke-width")).toBe("0.3px");
+
+    applyAppearanceFontVariables(root, { ...preferences, smoothing: "thin" });
+    expect(properties.get("-webkit-font-smoothing")).toBe("antialiased");
+    expect(properties.has("-webkit-text-stroke-width")).toBe(false);
+
+    applyAppearanceFontVariables(root, { ...preferences, smoothing: "system" });
+    expect(properties.has("-webkit-font-smoothing")).toBe(false);
+    expect(properties.has("-webkit-text-stroke-width")).toBe(false);
+  });
+});
 
 describe("areFontAdvancesMonospace", () => {
   it("accepts a fixed advance and rejects any proportional glyph", () => {

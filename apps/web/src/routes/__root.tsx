@@ -46,6 +46,7 @@ import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
 import { applyAppearanceContrast } from "~/appearanceContrast";
 import { useClientSettings } from "../hooks/useSettings";
+import { isMacPlatform } from "../lib/utils";
 import { PlanAgentSelectionHeal } from "../planAgentSelectionHeal";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -292,6 +293,7 @@ function FontAppearanceSync() {
   const fontSizePrompt = useClientSettings((settings) => settings.fontSizePrompt);
   const fontSizeCode = useClientSettings((settings) => settings.fontSizeCode);
   const fontSmoothing = useClientSettings((settings) => settings.fontSmoothing);
+  const fontStrokeWidth = useClientSettings((settings) => settings.fontStrokeWidth);
 
   useEffect(() => {
     applyAppearanceFontVariables(document.documentElement, {
@@ -301,7 +303,8 @@ function FontAppearanceSync() {
       sizeInterface: fontSizeInterface,
       sizePrompt: fontSizePrompt,
       sizeCode: fontSizeCode,
-      smoothing: fontSmoothing,
+      smoothing: isMacPlatform(navigator.platform) ? fontSmoothing : "system",
+      strokeWidth: fontStrokeWidth,
     });
   }, [
     fontFamilyCode,
@@ -311,6 +314,7 @@ function FontAppearanceSync() {
     fontSizeInterface,
     fontSizePrompt,
     fontSmoothing,
+    fontStrokeWidth,
   ]);
 
   return null;

@@ -540,6 +540,7 @@ export interface GhosttySelectionPosition {
 export interface GhosttyTerminalSurfaceOptions {
   readonly theme: GhosttyTheme;
   readonly font?: GhosttyTerminalFont;
+  readonly textStrokeWidth?: number;
   /** Read after font and WASM loading. Hosts can supply a getter for the latest value. */
   readonly visible?: boolean;
   readonly onData: (data: string) => void;
@@ -572,6 +573,7 @@ export class GhosttyTerminalSurface {
   private fontFamily: string;
   private requestedFontFamily: string | undefined;
   private fontSize: number;
+  private textStrokeWidth: number;
   private fontEpoch = 0;
   private pendingFontEpoch: number | null = null;
   private readonly resizeObserver: ResizeObserver;
@@ -665,6 +667,7 @@ export class GhosttyTerminalSurface {
     this.fontFamily = fontFamily;
     this.requestedFontFamily = options.font?.family;
     this.fontSize = terminalFontSize(options.font?.size);
+    this.textStrokeWidth = options.textStrokeWidth ?? 0;
     this.resizeObserver = new ResizeObserver(() => this.fit());
     this.installEvents();
     this.watchDevicePixelRatio();
@@ -789,6 +792,13 @@ export class GhosttyTerminalSurface {
     if (this.disposed) return;
     this.theme = theme;
     this.core.setTheme(theme);
+    this.forceFullRender = true;
+    this.requestRender();
+  }
+
+  setTextStrokeWidth(width: number): void {
+    if (this.disposed || this.textStrokeWidth === width) return;
+    this.textStrokeWidth = width;
     this.forceFullRender = true;
     this.requestRender();
   }
@@ -1842,6 +1852,7 @@ export class GhosttyTerminalSurface {
       metrics: this.metrics,
       fontSize: this.fontSize,
       fontFamily: this.fontFamily,
+      textStrokeWidth: this.textStrokeWidth,
       padding: CONTENT_PADDING,
       originY: this.originY,
       forceFull: this.forceFullRender,

@@ -97,6 +97,7 @@ export function renderGhosttySnapshot(options: {
   readonly metrics: GhosttyCellMetrics;
   readonly fontSize: number;
   readonly fontFamily: string;
+  readonly textStrokeWidth?: number;
   readonly padding: number;
   readonly forceFull: boolean;
   readonly cursorOn: boolean;
@@ -113,6 +114,7 @@ export function renderGhosttySnapshot(options: {
     metrics,
     fontSize,
     fontFamily,
+    textStrokeWidth = 0,
     padding,
     forceFull,
     cursorOn,
@@ -214,6 +216,11 @@ export function renderGhosttySnapshot(options: {
         // differs slightly from the measured grid. The clip already keeps text
         // inside its cells without distorting the letterforms.
         context.fillText(text, padding + runStart * metrics.width, top + metrics.baseline);
+        if (textStrokeWidth > 0) {
+          context.lineWidth = textStrokeWidth;
+          context.strokeStyle = context.fillStyle;
+          context.strokeText(text, padding + runStart * metrics.width, top + metrics.baseline);
+        }
         context.restore();
       }
       runStart = runEnd;
@@ -269,6 +276,11 @@ export function renderGhosttySnapshot(options: {
         context.font = fontForCell(cell, fontSize, fontFamily);
         context.fillStyle = cssColor(snapshot.background);
         context.fillText(cell.text, left, top + metrics.baseline);
+        if (textStrokeWidth > 0) {
+          context.lineWidth = textStrokeWidth;
+          context.strokeStyle = context.fillStyle;
+          context.strokeText(cell.text, left, top + metrics.baseline);
+        }
         context.restore();
       }
     }

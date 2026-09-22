@@ -44,7 +44,7 @@ import { Button } from "~/components/ui/button";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { cn } from "~/lib/utils";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
 import {
   observeSelectionActions,
@@ -400,7 +400,13 @@ export function TerminalViewport({
       terminal: settings.fontSizeTerminal,
     }),
   );
+  const terminalTextStrokeWidth = useClientSettings((settings) =>
+    isMacPlatform(navigator.platform) && settings.fontSmoothing === "balanced"
+      ? settings.fontStrokeWidth
+      : 0,
+  );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
+  const terminalTextStrokeWidthRef = useRef(terminalTextStrokeWidth);
   const terminalSession = useAttachedTerminalSession({
     environmentId,
     terminal: {
@@ -478,6 +484,11 @@ export function TerminalViewport({
   }, [terminalFontFamily, terminalFontSize]);
 
   useEffect(() => {
+    terminalTextStrokeWidthRef.current = terminalTextStrokeWidth;
+    terminalRef.current?.setTextStrokeWidth(terminalTextStrokeWidth);
+  }, [terminalTextStrokeWidth]);
+
+  useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
 
@@ -493,6 +504,7 @@ export function TerminalViewport({
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: terminalThemeFromApp(mount),
         font: terminalFontOptions(setupFont.family, setupFont.size),
+        textStrokeWidth: terminalTextStrokeWidthRef.current,
         get visible() {
           return visibleRef.current;
         },
@@ -517,6 +529,7 @@ export function TerminalViewport({
       // The theme observer is not installed yet, so re-read the theme in case
       // the app toggled light/dark while the WASM surface was loading.
       terminal.setTheme(terminalThemeFromApp(mount));
+      terminal.setTextStrokeWidth(terminalTextStrokeWidthRef.current);
       setupTerminal = terminal;
       terminalRef.current = terminal;
       // Client settings hydrate asynchronously; a font preference that landed

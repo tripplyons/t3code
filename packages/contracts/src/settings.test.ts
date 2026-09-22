@@ -488,9 +488,28 @@ describe("ClientSettings glass opacity", () => {
 });
 
 describe("ClientSettings font smoothing", () => {
-  it("uses the platform rendering by default and preserves an explicit preference", () => {
-    expect(decodeClientSettings({}).fontSmoothing).toBe(false);
-    expect(decodeClientSettings({ fontSmoothing: true }).fontSmoothing).toBe(true);
+  it("defaults to system rendering and accepts all three choices", () => {
+    expect(decodeClientSettings({}).fontSmoothing).toBe("system");
+    expect(decodeClientSettings({}).fontStrokeWidth).toBe(0.2);
+    expect(decodeClientSettingsPatch({ fontSmoothing: "balanced" })).toEqual({
+      fontSmoothing: "balanced",
+    });
+    expect(decodeClientSettingsPatch({ fontStrokeWidth: 0.4 })).toEqual({
+      fontStrokeWidth: 0.4,
+    });
+    expect(
+      encodeClientSettings(decodeClientSettings({ fontSmoothing: "balanced" })).fontSmoothing,
+    ).toBe("balanced");
+    expect(() => decodeClientSettingsPatch({ fontStrokeWidth: 0.6 })).toThrow();
+  });
+
+  it("keeps saved boolean preferences when upgrading", () => {
+    expect(decodeClientSettings({ fontSmoothing: true }).fontSmoothing).toBe("thin");
+    expect(decodeClientSettings({ fontSmoothing: false }).fontSmoothing).toBe("system");
+    expect(decodeClientSettingsPatch({ fontSmoothing: true })).toEqual({ fontSmoothing: "thin" });
+    expect(encodeClientSettings(decodeClientSettings({ fontSmoothing: true })).fontSmoothing).toBe(
+      "thin",
+    );
   });
 });
 

@@ -24,6 +24,8 @@ import {
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
   type EnvironmentIdentificationMode,
+  type FontSmoothingMode,
+  type FontStrokeWidth,
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
@@ -1598,6 +1600,11 @@ function TerminalFontRow() {
             terminal: settings.fontFamilyTerminal,
           })}
           size={settings.fontSizeTerminal}
+          strokeWidth={
+            isMacPlatform(navigator.platform) && settings.fontSmoothing === "balanced"
+              ? settings.fontStrokeWidth
+              : 0
+          }
         />
       }
     />
@@ -1611,7 +1618,7 @@ function FontSmoothingRow() {
   return (
     <SettingsRow
       {...searchableSetting("font-smoothing")}
-      description="Use thinner grayscale text smoothing instead of the macOS default."
+      description="Adjust the weight of smoothed interface and code text on macOS."
       resetAction={
         settings.fontSmoothing !== DEFAULT_UNIFIED_SETTINGS.fontSmoothing ? (
           <SettingResetButton
@@ -1623,11 +1630,67 @@ function FontSmoothingRow() {
         ) : null
       }
       control={
-        <Switch
-          checked={settings.fontSmoothing}
-          onCheckedChange={(checked) => updateSettings({ fontSmoothing: Boolean(checked) })}
-          aria-label="Font smoothing"
-        />
+        <Select
+          value={settings.fontSmoothing}
+          onValueChange={(value) => updateSettings({ fontSmoothing: value as FontSmoothingMode })}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Font smoothing">
+            <SelectValue>
+              {{ system: "System", balanced: "Balanced", thin: "Thin" }[settings.fontSmoothing]}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem value="system">System</SelectItem>
+            <SelectItem value="balanced">Balanced</SelectItem>
+            <SelectItem value="thin">Thin</SelectItem>
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+}
+
+function FontStrokeWidthRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  if (!isMacPlatform(navigator.platform)) return null;
+  return (
+    <SettingsRow
+      {...searchableSetting("font-stroke-width")}
+      description="Fine-tune the weight Balanced adds to interface, code, and terminal text."
+      resetAction={
+        settings.fontStrokeWidth !== DEFAULT_UNIFIED_SETTINGS.fontStrokeWidth ? (
+          <SettingResetButton
+            label="text thickness"
+            onClick={() =>
+              updateSettings({ fontStrokeWidth: DEFAULT_UNIFIED_SETTINGS.fontStrokeWidth })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={String(settings.fontStrokeWidth)}
+          onValueChange={(value) =>
+            updateSettings({ fontStrokeWidth: Number(value) as FontStrokeWidth })
+          }
+        >
+          <SelectTrigger
+            size="sm"
+            className="w-full sm:w-40"
+            aria-label="Text thickness"
+            disabled={settings.fontSmoothing !== "balanced"}
+          >
+            <SelectValue>{settings.fontStrokeWidth.toFixed(1)} px</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem value="0.1">0.1 px</SelectItem>
+            <SelectItem value="0.2">0.2 px</SelectItem>
+            <SelectItem value="0.3">0.3 px</SelectItem>
+            <SelectItem value="0.4">0.4 px</SelectItem>
+            <SelectItem value="0.5">0.5 px</SelectItem>
+          </SelectPopup>
+        </Select>
       }
     />
   );
@@ -1667,6 +1730,7 @@ function FontSettingsGroup() {
       <CodeFontRow />
       <TerminalFontRow />
       <FontSmoothingRow />
+      <FontStrokeWidthRow />
     </>
   );
 }
@@ -1698,6 +1762,11 @@ function SimpleFontRows() {
                 code: settings.fontSizeCode,
                 terminal: settings.fontSizeTerminal,
               })}
+              strokeWidth={
+                isMacPlatform(navigator.platform) && settings.fontSmoothing === "balanced"
+                  ? settings.fontStrokeWidth
+                  : 0
+              }
             />
           </>
         }
@@ -1712,7 +1781,7 @@ const ADVANCED_TYPOGRAPHY_TARGET_IDS: ReadonlySet<string> = new Set([
   "prompt-font",
   "terminal-font",
   ...(typeof navigator !== "undefined" && isMacPlatform(navigator.platform)
-    ? ["font-smoothing"]
+    ? ["font-smoothing", "font-stroke-width"]
     : []),
 ]);
 

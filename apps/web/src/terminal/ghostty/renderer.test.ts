@@ -129,18 +129,34 @@ describe("renderGhosttySnapshot", () => {
 
   it("clips text runs without scaling glyphs to their terminal cells", () => {
     const fillTextCalls: unknown[][] = [];
+    const strokeTextCalls: unknown[][] = [];
     const clipRects: number[][] = [];
+    let fillStyle = "";
+    let strokeStyle = "";
+    let lineWidth = 0;
     const context = {
       canvas: { width: 200, height: 40 },
       beginPath: () => {},
       clip: () => {},
       fillRect: () => {},
       fillText: (...args: unknown[]) => fillTextCalls.push(args),
+      strokeText: (...args: unknown[]) => strokeTextCalls.push([...args, strokeStyle, lineWidth]),
       rect: (...args: number[]) => clipRects.push(args),
       resetTransform: () => {},
       restore: () => {},
       save: () => {},
-      set fillStyle(_value: string) {},
+      get fillStyle() {
+        return fillStyle;
+      },
+      set fillStyle(value: string) {
+        fillStyle = value;
+      },
+      set strokeStyle(value: string) {
+        strokeStyle = value;
+      },
+      set lineWidth(value: number) {
+        lineWidth = value;
+      },
       set font(_value: string) {},
       set textBaseline(_value: string) {},
     } as unknown as CanvasRenderingContext2D;
@@ -166,6 +182,7 @@ describe("renderGhosttySnapshot", () => {
       metrics: { width: 7.2, height: 16, baseline: 11 },
       fontSize: 12,
       fontFamily: "monospace",
+      textStrokeWidth: 0.3,
       padding: 4,
       forceFull: false,
       cursorOn: true,
@@ -174,6 +191,10 @@ describe("renderGhosttySnapshot", () => {
     expect(fillTextCalls).toEqual([
       ["abx", 4, 15],
       ["x", 18.4, 15],
+    ]);
+    expect(strokeTextCalls).toEqual([
+      ["abx", 4, 15, "rgb(255, 255, 255)", 0.3],
+      ["x", 18.4, 15, "rgb(0, 0, 0)", 0.3],
     ]);
     expect(clipRects).toEqual([
       [4, 4, 21.6, 16],

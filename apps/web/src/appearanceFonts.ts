@@ -15,6 +15,7 @@ import {
   MIN_CODE_FONT_SIZE,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PROMPT_FONT_SIZE,
+  type FontSmoothingMode,
 } from "@t3tools/contracts";
 
 export const DEFAULT_SANS_FONT_STACK =
@@ -78,8 +79,8 @@ export interface AppearanceFontPreferences {
   readonly sizeInterface: number;
   readonly sizePrompt: number;
   readonly sizeCode: number;
-  /** Grayscale `antialiased` rendering; false keeps the heavier platform default. */
-  readonly smoothing: boolean;
+  readonly smoothing: FontSmoothingMode;
+  readonly strokeWidth: number;
 }
 
 /**
@@ -116,14 +117,17 @@ export function applyAppearanceFontVariables(
   // The @pierre/diffs surfaces read their own hook for code text.
   root.style.setProperty("--diffs-font-size", `${code}px`);
 
-  // Inherited from the root; only macOS engines honor the property, so no
-  // platform gate is needed here. Smoothing on means grayscale `antialiased`
-  // (thinner strokes); off restores the platform default, which macOS renders
-  // with heavier stem darkening.
-  if (preferences.smoothing) {
-    root.style.setProperty("-webkit-font-smoothing", "antialiased");
-  } else {
+  // macOS supports only two smoothing modes. A small text stroke gives the
+  // balanced choice an intermediate weight without changing glyph advances.
+  if (preferences.smoothing === "system") {
     root.style.removeProperty("-webkit-font-smoothing");
+  } else {
+    root.style.setProperty("-webkit-font-smoothing", "antialiased");
+  }
+  if (preferences.smoothing === "balanced") {
+    root.style.setProperty("-webkit-text-stroke-width", `${preferences.strokeWidth}px`);
+  } else {
+    root.style.removeProperty("-webkit-text-stroke-width");
   }
 }
 

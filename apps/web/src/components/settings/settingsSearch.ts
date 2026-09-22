@@ -250,7 +250,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "font-smoothing",
     title: "Font smoothing",
     to: "/settings/appearance",
-    searchTerms: ["typography text grayscale anti aliasing macos thin"],
+    searchTerms: ["typography text grayscale anti aliasing macos thin balanced weight"],
+    macOnly: true,
+  },
+  {
+    id: "font-stroke-width",
+    title: "Text thickness",
+    to: "/settings/appearance",
+    searchTerms: ["typography font smoothing balanced weight stroke macos"],
     macOnly: true,
   },
   {

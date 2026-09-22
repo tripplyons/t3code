@@ -178,10 +178,19 @@ function previewTerminalFont(family: string, size: number): { family?: string; s
  * exercises the same glyph atlas, cell metrics, and monospace gate the
  * terminal drawer uses.
  */
-export function TerminalFontPreview({ family, size }: { family: string; size: number }) {
+export function TerminalFontPreview({
+  family,
+  size,
+  strokeWidth,
+}: {
+  family: string;
+  size: number;
+  strokeWidth: number;
+}) {
   const mountRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<GhosttyTerminalSurface | null>(null);
   const fontRef = useRef({ family, size });
+  const strokeWidthRef = useRef(strokeWidth);
   const { theme, resolvedTheme } = useTheme();
 
   useEffect(() => {
@@ -190,6 +199,11 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
     fontRef.current = { family, size };
     void surfaceRef.current?.setFont(previewTerminalFont(family, size));
   }, [family, size]);
+
+  useEffect(() => {
+    strokeWidthRef.current = strokeWidth;
+    surfaceRef.current?.setTextStrokeWidth(strokeWidth);
+  }, [strokeWidth]);
 
   // Re-read the terminal tokens on any theme change — switching between two
   // palettes can leave resolvedTheme (light/dark) untouched.
@@ -236,6 +250,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
     void GhosttyTerminalSurface.create(mount, {
       theme: terminalThemeFromApp(mount),
       font: previewTerminalFont(fontRef.current.family, fontRef.current.size),
+      textStrokeWidth: strokeWidthRef.current,
       onData: echo,
       onResize: noop,
       onSelectionChange: noop,
@@ -250,6 +265,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
       surfaceRef.current = surface;
       // The theme and font may both have changed while the WASM surface loaded.
       surface.setTheme(terminalThemeFromApp(mount));
+      surface.setTextStrokeWidth(strokeWidthRef.current);
       const font = fontRef.current;
       void surface.setFont(previewTerminalFont(font.family, font.size));
       surface.write(TERMINAL_PREVIEW_TRANSCRIPT);
