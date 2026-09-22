@@ -320,6 +320,16 @@ const checkProvider = Effect.fn("checkProvider")(function* (
 });
 
 it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
+  it.effect("reports the installed CLI version when the local server predates an update", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionStdout = "opencode v2.0.14\n";
+      const snapshot = yield* checkProvider(makeOpenCodeSettings());
+
+      NodeAssert.equal(snapshot.installed, true);
+      NodeAssert.equal(snapshot.version, "2.0.14");
+    }),
+  );
+
   it.effect("shows a codex-style missing binary message", () =>
     Effect.gen(function* () {
       runtimeMock.state.runVersionError = new Error("spawn opencode ENOENT");

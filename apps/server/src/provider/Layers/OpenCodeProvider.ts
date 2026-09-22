@@ -505,7 +505,11 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     return fallback(Cause.squash(inventoryExit.cause), version, "inventory");
   }
 
-  version = inventoryExit.value.version;
+  // A shared local server can outlive a CLI update. Maintenance tracks the
+  // installed binary; only an external server owns its reported version.
+  if (isExternalServer) {
+    version = inventoryExit.value.version;
+  }
 
   const models = providerModelsFromSettings(
     flattenOpenCodeModels(inventoryExit.value.inventory),
