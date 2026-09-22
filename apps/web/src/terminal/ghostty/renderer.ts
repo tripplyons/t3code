@@ -210,12 +210,10 @@ export function renderGhosttySnapshot(options: {
         context.clip();
         context.font = fontForCell(first, fontSize, fontFamily);
         context.fillStyle = cssColor(first.foreground);
-        context.fillText(
-          text,
-          padding + runStart * metrics.width,
-          top + metrics.baseline,
-          (runEnd - runStart) * metrics.width,
-        );
+        // maxWidth scales glyphs to fit the cell run when the font's advance
+        // differs slightly from the measured grid. The clip already keeps text
+        // inside its cells without distorting the letterforms.
+        context.fillText(text, padding + runStart * metrics.width, top + metrics.baseline);
         context.restore();
       }
       runStart = runEnd;
@@ -247,25 +245,31 @@ export function renderGhosttySnapshot(options: {
   if (cursorOn && snapshot.cursorVisible && snapshot.cursorX >= 0 && snapshot.cursorY >= 0) {
     const left = padding + snapshot.cursorX * metrics.width;
     const top = originY + snapshot.cursorY * metrics.height;
+    const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
+    const cursorWidth = cell?.wide === GHOSTTY_CELL_WIDE.wide ? metrics.width * 2 : metrics.width;
     context.fillStyle = cssColor(snapshot.cursor);
     if (!focused) {
       // An unfocused terminal draws a hollow cursor so the active pane is obvious.
       context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.strokeRect(left + 0.5, top + 0.5, cursorWidth - 1, metrics.height - 1);
     } else if (snapshot.cursorStyle === 0) {
       context.fillRect(left, top, 2, metrics.height);
     } else if (snapshot.cursorStyle === 2) {
-      context.fillRect(left, top + metrics.height - 2, metrics.width, 2);
+      context.fillRect(left, top + metrics.height - 2, cursorWidth, 2);
     } else if (snapshot.cursorStyle === 3) {
       context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.strokeRect(left + 0.5, top + 0.5, cursorWidth - 1, metrics.height - 1);
     } else {
-      context.fillRect(left, top, metrics.width, metrics.height);
-      const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
+      context.fillRect(left, top, cursorWidth, metrics.height);
       if (cell?.text) {
+        context.save();
+        context.beginPath();
+        context.rect(left, top, cursorWidth, metrics.height);
+        context.clip();
         context.font = fontForCell(cell, fontSize, fontFamily);
         context.fillStyle = cssColor(snapshot.background);
-        context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+        context.fillText(cell.text, left, top + metrics.baseline);
+        context.restore();
       }
     }
   }

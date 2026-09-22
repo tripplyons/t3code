@@ -487,6 +487,13 @@ describe("ClientSettings glass opacity", () => {
   });
 });
 
+describe("ClientSettings font smoothing", () => {
+  it("uses the platform rendering by default and preserves an explicit preference", () => {
+    expect(decodeClientSettings({}).fontSmoothing).toBe(false);
+    expect(decodeClientSettings({ fontSmoothing: true }).fontSmoothing).toBe(true);
+  });
+});
+
 describe("ClientSettings appearance contrast", () => {
   it("defaults to the theme's original contrast", () => {
     expect(decodeClientSettings({}).appearanceContrast).toBe(100);

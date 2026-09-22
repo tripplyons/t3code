@@ -127,15 +127,16 @@ describe("renderGhosttySnapshot", () => {
     ]);
   });
 
-  it("constrains text runs and cursor glyphs to their terminal cells", () => {
+  it("clips text runs without scaling glyphs to their terminal cells", () => {
     const fillTextCalls: unknown[][] = [];
+    const clipRects: number[][] = [];
     const context = {
       canvas: { width: 200, height: 40 },
       beginPath: () => {},
       clip: () => {},
       fillRect: () => {},
       fillText: (...args: unknown[]) => fillTextCalls.push(args),
-      rect: () => {},
+      rect: (...args: number[]) => clipRects.push(args),
       resetTransform: () => {},
       restore: () => {},
       save: () => {},
@@ -171,8 +172,66 @@ describe("renderGhosttySnapshot", () => {
     });
 
     expect(fillTextCalls).toEqual([
-      ["abx", 4, 15, 21.6],
-      ["x", 18.4, 15, 7.2],
+      ["abx", 4, 15],
+      ["x", 18.4, 15],
+    ]);
+    expect(clipRects).toEqual([
+      [4, 4, 21.6, 16],
+      [18.4, 4, 7.2, 16],
+    ]);
+  });
+
+  it("keeps the full glyph visible under a block cursor on a wide cell", () => {
+    const fillTextCalls: unknown[][] = [];
+    const clipRects: number[][] = [];
+    const context = {
+      canvas: { width: 200, height: 40 },
+      beginPath: () => {},
+      clip: () => {},
+      fillRect: () => {},
+      fillText: (...args: unknown[]) => fillTextCalls.push(args),
+      rect: (...args: number[]) => clipRects.push(args),
+      resetTransform: () => {},
+      restore: () => {},
+      save: () => {},
+      set fillStyle(_value: string) {},
+      set font(_value: string) {},
+      set textBaseline(_value: string) {},
+    } as unknown as CanvasRenderingContext2D;
+    const cells = [cell("界", GHOSTTY_CELL_WIDE.wide), cell("", GHOSTTY_CELL_WIDE.spacerTail)];
+    const snapshot: GhosttySnapshot = {
+      cols: 2,
+      rows: 1,
+      foreground: { r: 255, g: 255, b: 255 },
+      background: { r: 0, g: 0, b: 0 },
+      cursor: { r: 255, g: 255, b: 255 },
+      cursorX: 0,
+      cursorY: 0,
+      cursorVisible: true,
+      cursorBlinking: false,
+      cursorStyle: 1,
+      dirtyRows: new Set([0]),
+      rowData: [{ cells, text: "界", isWrapContinuation: false, wrapsToNext: false }],
+    };
+
+    renderGhosttySnapshot({
+      context,
+      snapshot,
+      metrics: { width: 7.2, height: 16, baseline: 11 },
+      fontSize: 12,
+      fontFamily: "monospace",
+      padding: 4,
+      forceFull: false,
+      cursorOn: true,
+    });
+
+    expect(fillTextCalls).toEqual([
+      ["界", 4, 15],
+      ["界", 4, 15],
+    ]);
+    expect(clipRects).toEqual([
+      [4, 4, 14.4, 16],
+      [4, 4, 14.4, 16],
     ]);
   });
 
@@ -227,7 +286,7 @@ describe("renderGhosttySnapshot", () => {
 
     // The cursor row still repaints so the block disappears, but the inverted
     // glyph the on phase draws over the cell is gone.
-    expect(fillTextCalls).toEqual([["abx", 4, 15, 21.6]]);
+    expect(fillTextCalls).toEqual([["abx", 4, 15]]);
   });
 
   it("repaints the previous cursor row after the cursor moves", () => {
