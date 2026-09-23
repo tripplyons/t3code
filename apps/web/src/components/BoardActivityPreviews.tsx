@@ -50,10 +50,12 @@ export function BoardActivityPreviews({
           <div key={row.key} data-phase={row.phase} className="board-preview-row grid">
             <div className="min-h-0 overflow-hidden">
               <div className="board-preview-row-body mt-2 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {preview.kind === "reasoning" ? "Thinking" : "Agent"}
-                </span>
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words">{preview.text}</p>
+                <p className="line-clamp-2 whitespace-normal break-words">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {preview.kind === "reasoning" ? "Thinking" : "Agent"}:
+                  </span>{" "}
+                  {preview.text}
+                </p>
               </div>
             </div>
           </div>

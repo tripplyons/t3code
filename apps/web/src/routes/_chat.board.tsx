@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { BoardActivityPreviews } from "../components/BoardActivityPreviews";
-import { resolveSidebarThreadStatus } from "../components/Sidebar.logic";
 import { buildThreadBoard } from "../components/threadBoard";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { SidebarInset } from "../components/ui/sidebar";
@@ -92,7 +91,7 @@ function ThreadBoard() {
             Loading threads…
           </p>
         )}
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-4">
           {columns.map((column) => (
             <section key={column.id} aria-labelledby={`board-${column.id}`} className="min-w-0">
               <h2 id={`board-${column.id}`} className="mb-3 text-sm font-medium">
@@ -100,7 +99,6 @@ function ThreadBoard() {
               </h2>
               <ul className="space-y-2">
                 {column.threads.map((thread) => {
-                  const status = resolveSidebarThreadStatus(thread);
                   const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
                   const environment = environmentById.get(thread.environmentId);
                   const threadKey = `${thread.environmentId}:${thread.id}`;
@@ -125,21 +123,6 @@ function ThreadBoard() {
                         <div className="mt-2 break-words text-xs text-muted-foreground">
                           {project?.title ?? "Unknown project"} ·{" "}
                           {environment?.label ?? thread.environmentId}
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          {status === "approval"
-                            ? "Approval needed"
-                            : status === "input"
-                              ? "Question waiting"
-                              : status === "failed"
-                                ? "Failed"
-                                : status === "monitoring"
-                                  ? "Monitoring"
-                                  : column.id === "idle" &&
-                                      (thread.latestTurn?.state === "completed" ||
-                                        thread.hasActionableProposedPlan)
-                                    ? "Ready"
-                                    : column.label}
                         </div>
                       </Link>
                     </li>
