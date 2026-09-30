@@ -501,6 +501,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   // Use the partial message index and read current text so edits and reverts
   // are reflected without maintaining a second copy of the preview.
+  // Every query that selects this must alias projection_threads as `threads`.
   const recentActivityPreviewsSql = sql`(
     SELECT json_group_array(json(preview))
     FROM (
@@ -510,7 +511,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         'createdAt', created_at
       ) AS preview
       FROM projection_thread_messages
-      WHERE thread_id = projection_threads.thread_id
+      WHERE thread_id = threads.thread_id
         AND role IN ('assistant', 'reasoning') AND text <> ''
       ORDER BY created_at DESC, message_id DESC LIMIT ${THREAD_ACTIVITY_PREVIEW_COUNT}
     )
@@ -617,7 +618,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           deleted_at AS "deletedAt"
-        FROM projection_threads
+        FROM projection_threads threads
         ORDER BY created_at ASC, thread_id ASC
       `,
   });
@@ -742,7 +743,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           deleted_at AS "deletedAt"
-        FROM projection_threads
+        FROM projection_threads threads
         WHERE deleted_at IS NULL
           AND archived_at IS NOT NULL
         ORDER BY project_id ASC, archived_at DESC, thread_id DESC
@@ -1347,7 +1348,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           deleted_at AS "deletedAt"
-        FROM projection_threads
+        FROM projection_threads threads
         WHERE thread_id = ${threadId}
           AND deleted_at IS NULL
           AND archived_at IS NULL
