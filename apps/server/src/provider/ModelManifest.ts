@@ -147,6 +147,23 @@ function manifestUpdatedAtMs(manifest: ModelManifestData): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/**
+ * Drivers whose adapter this fork replaced. The remote manifest's policy for
+ * them describes upstream's adapter, so it is dropped and the bundled policy
+ * stays in effect.
+ */
+const FORK_OWNED_COMPATIBILITY_DRIVERS: ReadonlySet<string> = new Set(["opencode"]);
+
+function dropForkOwnedCompatibility(remote: ModelManifestData): ModelManifestData {
+  if (remote.compatibility === undefined) return remote;
+  return {
+    ...remote,
+    compatibility: remote.compatibility.filter(
+      (policy) => !FORK_OWNED_COMPATIBILITY_DRIVERS.has(policy.driver),
+    ),
+  };
+}
+
 /** Resolve provider-neutral model presentation and capability data. */
 export function resolveProviderCatalog(
   manifest: ModelManifestData,
@@ -369,7 +386,7 @@ export const make = Effect.gen(function* () {
       if (manifestUpdatedAtMs(BUNDLED_MODEL_MANIFEST) > manifestUpdatedAtMs(fromDisk.manifest)) {
         return;
       }
-      manifest = fromDisk.manifest;
+      manifest = dropForkOwnedCompatibility(fromDisk.manifest);
       fetchedAtMs = fromDisk.fetchedAtMs;
     }),
   );
@@ -399,6 +416,7 @@ export const make = Effect.gen(function* () {
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.flatMap((response) => response.json),
       Effect.flatMap((json) => decodeManifest(json)),
+      Effect.map(dropForkOwnedCompatibility),
       Effect.timeout(FETCH_TIMEOUT_MS),
       Effect.catchCause(() => Effect.succeed(null)),
     );

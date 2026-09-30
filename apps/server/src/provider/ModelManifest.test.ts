@@ -613,3 +613,43 @@ it.effect("caches valid compatibility policies and keeps them after a malformed 
     ),
   );
 });
+
+it.effect("drops remote and cached policies for drivers this fork owns", () => {
+  const codexPolicy = {
+    driver: "codex",
+    t3CodeRange: ">=0.0.42",
+    ranges: [{ range: "=2.0.0", status: "supported" }],
+  } as const;
+  const remote: ModelManifestData = {
+    ...REMOTE_MANIFEST,
+    compatibility: [
+      codexPolicy,
+      {
+        driver: "opencode",
+        t3CodeRange: ">=0.0.42",
+        ranges: [{ range: ">=2.0.0", status: "broken" }],
+      },
+    ],
+  };
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const config = yield* ServerConfig.ServerConfig;
+    const path = yield* Path.Path;
+    // A cache written before this rule still holds upstream's policy.
+    yield* fileSystem.writeFileString(
+      path.join(config.stateDir, "model-manifest.json"),
+      yield* encodeManifestCache({ fetchedAtMs: 0, manifest: remote }),
+    );
+    const service = yield* make;
+    assert.deepStrictEqual((yield* service.current).compatibility, [codexPolicy]);
+    assert.deepStrictEqual((yield* service.forceRefresh).compatibility, [codexPolicy]);
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      serviceLayers({
+        prefix: "model-manifest-fork-owned-test",
+        response: () => Response.json(remote),
+      }),
+    ),
+  );
+});
