@@ -18,6 +18,7 @@ const script = JSON.parse(NodeFS.readFileSync(process.env.T3_CODEX_COLLAB_SCRIPT
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 let turnStartCount = 0;
 let activeTurn;
+let goal = script.goal ?? null;
 // Server->client requests the runtime must answer (approval prompts), keyed
 // by the numeric JSON-RPC id this peer allocated for them.
 const openServerRequests = new Map();
@@ -100,6 +101,53 @@ rl.on("line", (line) => {
   }
   if (method === "skills/list" || method === "model/list") {
     write({ id, result: { data: [] } });
+    return;
+  }
+  if (method?.startsWith("thread/goal/")) {
+    if (script.recordGoalRequests) {
+      NodeFS.appendFileSync(
+        `${process.env.T3_CODEX_COLLAB_SCRIPT}.goalRequests`,
+        `${JSON.stringify({ method, params: message.params })}\n`,
+      );
+    }
+    if (script.goalUnsupported) {
+      write({ id, error: { code: -32601, message: "Goals are not supported" } });
+      return;
+    }
+    if (method === "thread/goal/get") {
+      write({ id, result: { goal } });
+      return;
+    }
+    if (method === "thread/goal/clear") {
+      goal = null;
+      write({
+        jsonrpc: "2.0",
+        method: "thread/goal/cleared",
+        params: { threadId: script.rootThreadId },
+      });
+      write({ id, result: { cleared: true } });
+      return;
+    }
+    const params = message.params;
+    goal = {
+      createdAt: 1,
+      updatedAt: 2,
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      status: "active",
+      tokenBudget: null,
+      ...goal,
+      ...(params.objective !== undefined ? { objective: params.objective } : {}),
+      ...(params.status !== undefined ? { status: params.status } : {}),
+      ...(params.tokenBudget !== undefined ? { tokenBudget: params.tokenBudget } : {}),
+      threadId: script.rootThreadId,
+    };
+    write({
+      jsonrpc: "2.0",
+      method: "thread/goal/updated",
+      params: { threadId: script.rootThreadId, goal },
+    });
+    write({ id, result: { goal } });
     return;
   }
   if (method === "thread/start") {

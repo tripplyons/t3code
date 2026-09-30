@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { ThreadGoal } from "./threadGoal.ts";
 import {
   EventId,
   IsoDateTime,
@@ -1175,7 +1176,14 @@ const ProviderRuntimeErrorEvent = Schema.Struct({
 });
 export type ProviderRuntimeErrorEvent = typeof ProviderRuntimeErrorEvent.Type;
 
+const ProviderRuntimeThreadGoalUpdatedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: Schema.Literal("thread.goal.updated"),
+  payload: Schema.Struct({ goal: Schema.NullOr(ThreadGoal) }),
+});
+
 export const ProviderRuntimeEventV2 = Schema.Union([
+  ProviderRuntimeThreadGoalUpdatedEvent,
   ProviderRuntimeSessionStartedEvent,
   ProviderRuntimeSessionConfiguredEvent,
   ProviderRuntimeSessionStateChangedEvent,

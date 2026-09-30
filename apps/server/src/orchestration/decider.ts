@@ -4,6 +4,7 @@ import {
   SCRIPT_RUN_COMMAND_PATTERN,
   MessageId,
   ThreadLinkedPullRequest,
+  ThreadGoal,
   UserInputRequestedPayload,
   isImportedAgentSessionMessageId,
   type OrchestrationCommand,
@@ -54,6 +55,7 @@ const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const decodeUserInputRequestedPayload = Schema.decodeUnknownOption(UserInputRequestedPayload);
 const threadPullRequestLinksEqual = Schema.toEquivalence(Schema.NullOr(ThreadLinkedPullRequest));
+const threadGoalsEqual = Schema.toEquivalence(Schema.NullOr(ThreadGoal));
 
 /**
  * Blocked-on-you work derived from the thread's retained activities: an
@@ -1878,6 +1880,21 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           createdAt: command.createdAt,
         },
+      };
+    }
+
+    case "thread.goal.set": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      if (threadGoalsEqual(thread.goal ?? null, command.goal)) return [];
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.goal-set",
+        payload: { threadId: command.threadId, goal: command.goal },
       };
     }
 

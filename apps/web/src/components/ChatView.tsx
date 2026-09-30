@@ -1,3 +1,4 @@
+import { ThreadGoalControl } from "./chat/ThreadGoalControl";
 import { isChatGptUsageLimitError } from "@t3tools/shared/usageLimits";
 import { useLoadBalancedEnvironment } from "../hooks/useLoadBalancedEnvironment";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -9775,6 +9776,16 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
+
+        {activeThread && (selectedProvider === "codex" || activeThread.goal) ? (
+          <ThreadGoalControl
+            key={`${environmentId}:${activeThread.id}`}
+            environmentId={environmentId}
+            threadId={activeThread.id}
+            goal={activeThread.goal}
+            disabled={!activeThread.session || activeEnvironmentConnectionPhase !== "connected"}
+          />
+        ) : null}
 
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">

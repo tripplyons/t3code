@@ -84,6 +84,8 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
       }),
   );
 
+  public readonly updateGoal: CodexSessionRuntimeShape["updateGoal"] = () => Effect.succeed(null);
+
   public readonly compactThread = Effect.void;
 
   public readonly interruptTurnImpl = vi.fn((_turnId?: TurnId): Promise<void> =>
@@ -718,6 +720,53 @@ function codexTurnEvent(method: "turn/started" | "turn/completed", turnId: strin
 }
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
+  it.effect("maps native goal lifecycle and token progress without creating a turn", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const goals = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "thread.goal.updated"),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const native = {
+        threadId: "provider-thread-1",
+        objective: "Finish",
+        status: "active",
+        tokensUsed: 100,
+        timeUsedSeconds: 5,
+        createdAt: 1,
+        updatedAt: 2,
+      };
+      for (const [index, method] of [
+        "thread/goal/updated",
+        "thread/goal/snapshot",
+        "thread/goal/cleared",
+      ].entries()) {
+        yield* runtime.emit({
+          id: asEventId(`evt-goal-${index}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method,
+          payload:
+            method === "thread/goal/cleared" ? { threadId: native.threadId } : { goal: native },
+        });
+      }
+      const mapped = yield* Fiber.join(goals);
+      const { threadId: _nativeId, ...expected } = native;
+      NodeAssert.deepEqual(
+        mapped.map((event) => event.payload),
+        [
+          { goal: { ...expected, tokenBudget: null } },
+          { goal: { ...expected, tokenBudget: null } },
+          { goal: null },
+        ],
+      );
+    }),
+  );
+
   it.effect("calculates one Codex turn total from cumulative counters", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

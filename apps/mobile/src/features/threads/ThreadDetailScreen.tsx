@@ -1,3 +1,4 @@
+import { ThreadGoalControl } from "./ThreadGoalControl";
 import type { WorktreeSetupCardProps } from "./worktree-setup-card";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { type EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -899,6 +900,19 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 : "absolute inset-0 bg-screen"
             }
           />
+          {props.selectedThread.goal ||
+          props.serverConfig?.providers.some(
+            (candidate) =>
+              candidate.instanceId === selectedInstanceId && candidate.driver === "codex",
+          ) ? (
+            <ThreadGoalControl
+              key={selectedThreadKey}
+              environmentId={props.environmentId}
+              threadId={props.selectedThread.id}
+              goal={props.selectedThread.goal}
+              disabled={!props.selectedThread.session || props.connectionStateLabel !== "connected"}
+            />
+          ) : null}
           <RenderErrorBoundary
             key={selectedThreadKey}
             resetKeys={[props.threadCwd]}

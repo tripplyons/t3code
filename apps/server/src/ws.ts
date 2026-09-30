@@ -57,6 +57,7 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  ProviderUpdateGoalError,
   ProviderUploadFeedbackError,
   ProviderSetupError,
   RelayClientInstallFailedError,
@@ -2430,6 +2431,20 @@ const makeWsRpcLayer = (
               return { providers };
             }),
             { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.providerUpdateGoal]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerUpdateGoal,
+            providerService.updateGoal(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderUpdateGoalError({
+                    threadId: input.threadId,
+                    message: cause.message,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           observeRpcEffect(

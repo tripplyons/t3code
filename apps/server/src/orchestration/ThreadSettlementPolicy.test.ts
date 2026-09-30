@@ -173,6 +173,23 @@ describe("resolveAutoSettlementAt", () => {
     expect(decide(makeThread({ settledOverride: "active" }))).toBe(false);
   });
 
+  it("keeps an active goal open between turns even after its pull request merges", () => {
+    const goal = {
+      objective: "Finish migration",
+      status: "active" as const,
+      tokenBudget: null,
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    expect(decide(makeThread({ goal }))).toBe(false);
+    expect(
+      decide(makeThread({ goal }), { state: "merged", mergedAt: "2026-08-21T00:00:00.000Z" }),
+    ).toBe(false);
+    expect(decide(makeThread({ goal: { ...goal, status: "complete" } }))).toBe(true);
+  });
+
   it("never settles a thread whose auto-settle is turned off, by inactivity or merge", () => {
     const held = makeThread({ autoSettleDisabledAt: "2026-08-21T00:00:00.000Z" });
     expect(decide(held)).toBe(false);

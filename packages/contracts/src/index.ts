@@ -13,6 +13,7 @@ export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";
 export * from "./provider.ts";
+export * from "./threadGoal.ts";
 export * from "./providerInstance.ts";
 export * from "./providerSetup.ts";
 export * from "./providerRuntime.ts";

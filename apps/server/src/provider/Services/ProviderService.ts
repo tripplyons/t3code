@@ -21,6 +21,8 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
+  ProviderUpdateGoalInput,
+  ProviderUpdateGoalResult,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
   MessageId,
@@ -124,6 +126,10 @@ export interface ProviderServiceShape {
   /**
    * Upload a thread and return the provider's shareable feedback identifier.
    */
+  readonly updateGoal: (
+    input: ProviderUpdateGoalInput,
+  ) => Effect.Effect<ProviderUpdateGoalResult, ProviderServiceError>;
+
   readonly uploadFeedback: (
     input: ProviderUploadFeedbackInput,
   ) => Effect.Effect<ProviderUploadFeedbackResult, ProviderServiceError>;

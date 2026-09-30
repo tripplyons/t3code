@@ -58,6 +58,7 @@ const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
   ({
     startSession: () => Effect.die("unused"),
     sendTurn: () => Effect.die("unused"),
+    updateGoal: () => Effect.die("Unexpected goal update"),
     compactThread: () => Effect.die("unused"),
     interruptTurn: () => Effect.die("unused"),
     respondToRequest: () => Effect.die("unused"),

@@ -487,6 +487,9 @@ export function applyThreadDetailEvent(
     }
 
     // ── Session ─────────────────────────────────────────────────────
+    case "thread.goal-set":
+      return { kind: "updated", thread: { ...thread, goal: event.payload.goal } };
+
     case "thread.session-set": {
       // Leaving the "running" session status is the turn-end signal: settle a
       // still-running latest turn so its duration reflects the whole turn.

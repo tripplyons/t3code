@@ -52,6 +52,7 @@ import {
   ThreadUnsettledPayload,
   ThreadUnsnoozedPayload,
   ThreadRevertedPayload,
+  ThreadGoalSetPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
@@ -836,6 +837,14 @@ export function projectEvent(
           }),
         };
       });
+
+    case "thread.goal-set":
+      return decodeForEvent(ThreadGoalSetPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, { goal: payload.goal }),
+        })),
+      );
 
     case "thread.session-set":
       return Effect.gen(function* () {

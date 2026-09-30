@@ -23,6 +23,8 @@ import {
   type ToolActivitySource,
   type ProviderUserInputAnswers,
   type ServerProviderModel,
+  type ThreadGoal,
+  type ProviderUpdateGoalInput,
   RuntimeItemId,
   RuntimeRequestId,
   RuntimeTaskId,
@@ -1312,10 +1314,41 @@ function mapCollabAgentEvent(
   }
 }
 
+function codexThreadGoal(goal: EffectCodexSchema.V2ThreadGoalSetResponse__ThreadGoal): ThreadGoal {
+  return {
+    objective: goal.objective,
+    status: goal.status,
+    tokenBudget: goal.tokenBudget ?? null,
+    tokensUsed: goal.tokensUsed,
+    timeUsedSeconds: goal.timeUsedSeconds,
+    createdAt: goal.createdAt,
+    updatedAt: goal.updatedAt,
+  };
+}
+
 function mapToRuntimeEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
 ): ReadonlyArray<ProviderRuntimeEvent> {
+  if (
+    event.kind === "notification" &&
+    (event.method === "thread/goal/updated" ||
+      event.method === "thread/goal/cleared" ||
+      event.method === "thread/goal/snapshot")
+  ) {
+    const payload = readPayload(
+      Schema.Struct({ goal: Schema.NullOr(EffectCodexSchema.V2ThreadGoalSetResponse__ThreadGoal) }),
+      event.payload,
+    );
+    if (event.method !== "thread/goal/cleared" && payload === undefined) return [];
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "thread.goal.updated",
+        payload: { goal: payload?.goal ? codexThreadGoal(payload.goal) : null },
+      },
+    ];
+  }
   if (event.kind === "notification" && event.method.startsWith("collabAgent/")) {
     return mapCollabAgentEvent(event, canonicalThreadId);
   }
@@ -2655,6 +2688,20 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       ),
     );
 
+  const updateGoal = Effect.fn("CodexAdapter.updateGoal")(function* (
+    input: ProviderUpdateGoalInput,
+  ) {
+    const session = yield* requireSession(input.threadId);
+    const goal = yield* session.runtime
+      .updateGoal(input)
+      .pipe(
+        Effect.mapError((cause) =>
+          mapCodexRuntimeError(input.threadId, `thread/goal/${input.action}`, cause),
+        ),
+      );
+    return { goal: goal ? codexThreadGoal(goal) : null };
+  });
+
   const compactThread = Effect.fn("compactThread")(function* (threadId: ThreadId) {
     const session = yield* requireSession(threadId);
     yield* session.runtime.compactThread.pipe(
@@ -2807,6 +2854,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     },
     startSession,
     sendTurn,
+    updateGoal,
     compaction: { type: "native", start: compactThread },
     interruptTurn,
     readThread,

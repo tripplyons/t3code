@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./thread-goal": {
+      "types": "./src/threadGoal.ts",
+      "default": "./src/threadGoal.ts"
+    },
     "./device/stream": {
       "types": "./src/device/stream.ts",
       "default": "./src/device/stream.ts"

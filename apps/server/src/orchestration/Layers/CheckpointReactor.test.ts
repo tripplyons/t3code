@@ -119,6 +119,7 @@ function createProviderServiceHarness(
   const service: ProviderServiceShape = {
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
+    updateGoal: () => Effect.die("Unexpected goal update"),
     compactThread: () => unsupported(),
     interruptTurn: () => unsupported(),
     respondToRequest: () => unsupported(),

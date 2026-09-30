@@ -1054,6 +1054,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
+        case "thread.goal-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) return;
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            goal: event.payload.goal,
+          });
+          return;
+        }
+
         case "thread.session-set": {
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,

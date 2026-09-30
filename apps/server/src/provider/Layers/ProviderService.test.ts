@@ -11,6 +11,7 @@ import type {
   ProviderTurnStartResult,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
+  ProviderUpdateGoalInput,
 } from "@t3tools/contracts";
 import {
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
@@ -186,6 +187,8 @@ function makeFakeCodexAdapter(
     },
   );
 
+  const updateGoal = vi.fn((_input: ProviderUpdateGoalInput) => Effect.succeed({ goal: null }));
+
   const interruptTurn = vi.fn(
     (_threadId: ThreadId, _turnId?: TurnId): Effect.Effect<void, ProviderAdapterError> =>
       Effect.void,
@@ -294,7 +297,7 @@ function makeFakeCodexAdapter(
     hasSession,
     readThread,
     rollbackThread,
-    ...(provider === CODEX_DRIVER ? { uploadFeedback } : {}),
+    ...(provider === CODEX_DRIVER ? { uploadFeedback, updateGoal } : {}),
     stopAll,
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
@@ -332,6 +335,7 @@ function makeFakeCodexAdapter(
     readThread,
     rollbackThread,
     uploadFeedback,
+    updateGoal,
     stopAll,
   };
 }
@@ -2187,6 +2191,47 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.deepStrictEqual(result, { feedbackId: `feedback-${threadId}` });
       assert.strictEqual(routing.codex.startSession.mock.calls.length, 1);
       assert.deepStrictEqual(routing.codex.uploadFeedback.mock.calls, [[{ threadId }]]);
+    }),
+  );
+
+  it.effect("recovers a stopped Codex session before changing its goal", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-goal-recover");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: fixtureCwd("goal-project"),
+        runtimeMode: "full-access",
+      });
+      yield* routing.codex.stopSession(threadId);
+      routing.codex.startSession.mockClear();
+      routing.codex.updateGoal.mockClear();
+      const input = { threadId, action: "set", status: "paused" } as const;
+
+      assert.deepStrictEqual(yield* provider.updateGoal(input), { goal: null });
+      assert.strictEqual(routing.codex.startSession.mock.calls.length, 1);
+      assert.deepStrictEqual(routing.codex.updateGoal.mock.calls, [[input]]);
+    }),
+  );
+
+  it.effect("rejects goals for unsupported providers without restarting them", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-goal-unsupported");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* routing.claude.stopSession(threadId);
+      routing.claude.startSession.mockClear();
+      const error = yield* provider.updateGoal({ threadId, action: "clear" }).pipe(Effect.flip);
+      assert.instanceOf(error, ProviderValidationError);
+      assert.include(error.issue, "does not support goals");
+      assert.strictEqual(routing.claude.startSession.mock.calls.length, 0);
     }),
   );
 

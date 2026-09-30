@@ -76,6 +76,17 @@ reported accounts, refresh provider status, and confirm the second instance has
 its own shadow path and login. A shadow-home conflict usually means the directory
 contains a copied Codex setup. Use a fresh shadow directory and sign in again.
 
+## Manage a goal
+
+In an existing Codex conversation, choose **Set goal** to give Codex an objective
+and an optional token budget. Codex can continue across turns until it completes
+the goal or reaches a stopping condition.
+
+The thread shows the goal's current status. Open it to see token usage, edit the
+objective or budget, pause, resume, or clear it. Editing preserves its status.
+Pausing stops goal continuation; clearing removes the objective. These controls
+are available on web, desktop, and mobile and require a Codex build with goal support.
+
 ## Answer questions while Codex works
 
 Codex can ask a question and keep working. Answer it in the thread's question

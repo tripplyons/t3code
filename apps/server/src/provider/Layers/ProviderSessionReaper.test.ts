@@ -5,6 +5,7 @@ import {
   TurnId,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ThreadGoal,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -69,6 +70,7 @@ function makeReadModel(
       readonly updatedAt: string;
     } | null;
     readonly backgroundLiveness?: "working" | "monitoring" | null;
+    readonly goal?: ThreadGoal;
   }>,
 ) {
   const now = "2026-01-01T00:00:00.000Z";
@@ -112,6 +114,7 @@ function makeReadModel(
       messages: [],
       session: thread.session,
       backgroundLiveness: thread.backgroundLiveness ?? null,
+      goal: thread.goal ?? null,
       activities: [],
       proposedPlans: [],
       checkpoints: [],
@@ -192,6 +195,7 @@ describe("ProviderSessionReaper", () => {
     const providerService: ProviderServiceShape = {
       startSession: () => unsupported(),
       sendTurn: () => unsupported(),
+      updateGoal: () => Effect.die("Unexpected goal update"),
       compactThread: () => unsupported(),
       interruptTurn: () => unsupported(),
       respondToRequest: () => unsupported(),
@@ -414,6 +418,57 @@ describe("ProviderSessionReaper", () => {
     const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
     expect(Option.isSome(remaining)).toBe(true);
   });
+
+  it.each(["active", "paused"] as const)(
+    "preserves only active goals during idle cleanup: %s",
+    async (status) => {
+      const threadId = ThreadId.make(`thread-reaper-goal-${status}`);
+      const now = "2026-04-14T00:00:00.000Z";
+      const harness = await createHarness({
+        readModel: makeReadModel([
+          {
+            id: threadId,
+            session: {
+              threadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: now,
+            },
+            goal: {
+              objective: "Finish",
+              status,
+              tokenBudget: null,
+              tokensUsed: 0,
+              timeUsedSeconds: 0,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
+        ]),
+      });
+      const repository = await runtime!.runPromise(
+        Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+      );
+      await runtime!.runPromise(
+        repository.upsert({
+          threadId,
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          adapterKey: "codex",
+          runtimeMode: "full-access",
+          status: "running",
+          lastSeenAt: now,
+          resumeCursor: { threadId: "native-goal" },
+          runtimePayload: null,
+        }),
+      );
+      await sweepAt(Date.parse(now) + 2000);
+      expect(harness.stopSession.mock.calls).toEqual(status === "active" ? [] : [[{ threadId }]]);
+    },
+  );
 
   it.each(["ready", "interrupted", "error"] as const)(
     "gives a long turn a full idle window after becoming %s",

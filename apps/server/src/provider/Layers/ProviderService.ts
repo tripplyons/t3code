@@ -25,6 +25,7 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
+  ProviderUpdateGoalInput,
   ProviderUploadFeedbackInput,
   ThreadId,
   TurnId,
@@ -2298,6 +2299,41 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     );
   });
 
+  const updateGoal: ProviderServiceMethod<"updateGoal"> = Effect.fn("updateGoal")(
+    function* (rawInput) {
+      const input = yield* decodeInputOrValidationError({
+        operation: "ProviderService.updateGoal",
+        schema: ProviderUpdateGoalInput,
+        payload: rawInput,
+      });
+      let routed = yield* resolveRoutableSession({
+        threadId: input.threadId,
+        operation: "ProviderService.updateGoal",
+        allowRecovery: false,
+      });
+      if (routed.adapter.updateGoal === undefined) {
+        return yield* toValidationError(
+          "ProviderService.updateGoal",
+          `Provider '${routed.adapter.provider}' does not support goals.`,
+        );
+      }
+      if (!routed.isActive) {
+        routed = yield* resolveRoutableSession({
+          threadId: input.threadId,
+          operation: "ProviderService.updateGoal",
+          allowRecovery: true,
+        });
+      }
+      if (routed.adapter.updateGoal === undefined) {
+        return yield* toValidationError(
+          "ProviderService.updateGoal",
+          `Provider '${routed.adapter.provider}' does not support goals.`,
+        );
+      }
+      return yield* routed.adapter.updateGoal(input);
+    },
+  );
+
   const uploadFeedback: ProviderServiceMethod<"uploadFeedback"> = Effect.fn("uploadFeedback")(
     function* (rawInput) {
       const input = yield* decodeInputOrValidationError({
@@ -2462,6 +2498,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     getInstanceInfo,
     assertConversationRollbackSupported,
     rollbackConversation,
+    updateGoal,
     uploadFeedback,
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each

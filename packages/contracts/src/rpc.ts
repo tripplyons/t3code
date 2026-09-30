@@ -6,6 +6,11 @@ import {
   ChatGptHandoffState,
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
+import {
+  ProviderUpdateGoalInput,
+  ProviderUpdateGoalResult,
+  ProviderUpdateGoalError,
+} from "./threadGoal.ts";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -306,6 +311,7 @@ export const WS_METHODS = {
   attachmentsDelete: "attachments.delete",
 
   // Provider methods
+  providerUpdateGoal: "provider.updateGoal",
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
   providerConsumeResetCredit: "provider.consumeResetCredit",
@@ -1036,6 +1042,12 @@ const WsAttachmentsDeleteRpc = Rpc.make(WS_METHODS.attachmentsDelete, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsProviderUpdateGoalRpc = Rpc.make(WS_METHODS.providerUpdateGoal, {
+  payload: ProviderUpdateGoalInput,
+  success: ProviderUpdateGoalResult,
+  error: Schema.Union([ProviderUpdateGoalError, EnvironmentAuthorizationError]),
+});
+
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,
@@ -1516,6 +1528,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAssetsCreateUrlRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
+  WsProviderUpdateGoalRpc,
   WsProviderUploadFeedbackRpc,
   WsSubscribeVcsStatusRpc,
   WsSubscribeWorktreeSetupRpc,

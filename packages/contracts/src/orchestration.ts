@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { ThreadGoal } from "./threadGoal.ts";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
@@ -838,6 +839,7 @@ export const OrchestrationThread = Schema.Struct({
   // Manual Active placement. Keyless threads retain their creation/re-entry
   // order above the arranged run. Settling clears this slot.
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goal: Schema.optional(Schema.NullOr(ThreadGoal)),
   // Set while the user has turned automatic settlement off for this thread.
   // Survives manual settle, un-settle, and activity: only the user clears it.
   // Optional so payloads from older servers still decode.
@@ -923,6 +925,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   pinnedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goal: Schema.optional(Schema.NullOr(ThreadGoal)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -1504,6 +1507,14 @@ export const ClientOrchestrationCommand = Schema.Union([
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 
+const ThreadGoalSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.goal.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  goal: Schema.NullOr(ThreadGoal),
+  createdAt: IsoDateTime,
+});
+
 const ThreadSessionSetCommand = Schema.Struct({
   type: Schema.Literal("thread.session.set"),
   commandId: CommandId,
@@ -1675,6 +1686,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadAutoSettleCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
+  ThreadGoalSetCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
@@ -1730,6 +1742,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.checkpoint-revert-requested",
   "thread.reverted",
   "thread.session-stop-requested",
+  "thread.goal-set",
   "thread.session-set",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
@@ -1987,6 +2000,11 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const ThreadGoalSetPayload = Schema.Struct({
+  threadId: ThreadId,
+  goal: Schema.NullOr(ThreadGoal),
+});
+
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
@@ -2199,6 +2217,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.session-stop-requested"),
     payload: ThreadSessionStopRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.goal-set"),
+    payload: ThreadGoalSetPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

@@ -125,6 +125,7 @@ function createProviderServiceHarness() {
   const service: ProviderServiceShape = {
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
+    updateGoal: () => Effect.die("Unexpected goal update"),
     compactThread: () => unsupported(),
     interruptTurn: () => unsupported(),
     respondToRequest: () => unsupported(),
@@ -439,6 +440,86 @@ describe("ProviderRuntimeIngestion", () => {
       drain,
     };
   }
+
+  it("persists goal updates in shell and detail snapshots and clears them without timeline activity", async () => {
+    const harness = await createHarness();
+    const goal = {
+      objective: "Complete the migration",
+      status: "active" as const,
+      tokenBudget: 50000,
+      tokensUsed: 1234,
+      timeUsedSeconds: 45,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    for (const [index, state] of [
+      goal,
+      { ...goal, status: "paused" as const },
+      { ...goal, status: "complete" as const },
+      null,
+    ].entries()) {
+      await harness.emitAndDrain([
+        {
+          type: "thread.goal.updated",
+          eventId: asEventId(`evt-goal-${index}`),
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          payload: { goal: state },
+        },
+      ]);
+      expect((await harness.readThreadShell()).goal).toEqual(state);
+      const snapshot = await harness.readModel();
+      expect(snapshot.threads[0]?.goal).toEqual(state);
+      expect(snapshot.threads[0]?.activities).toEqual([]);
+      await harness.emitAndDrain([
+        {
+          type: "thread.goal.updated",
+          eventId: asEventId(`evt-goal-duplicate-${index}`),
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          payload: { goal: state },
+        },
+      ]);
+      expect((await harness.readModel()).snapshotSequence).toBe(snapshot.snapshotSequence);
+    }
+  });
+
+  it("drops the Codex goal view when another provider starts", async () => {
+    const harness = await createHarness();
+    await harness.emitAndDrain([
+      {
+        type: "thread.goal.updated",
+        eventId: asEventId("evt-provider-goal"),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        payload: {
+          goal: {
+            objective: "Finish",
+            status: "active",
+            tokenBudget: null,
+            tokensUsed: 0,
+            timeUsedSeconds: 0,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      },
+    ]);
+    await harness.emitAndDrain([
+      {
+        type: "session.started",
+        eventId: asEventId("evt-provider-switch"),
+        provider: ProviderDriverKind.make("claudeAgent"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+    ]);
+    expect((await harness.readThreadShell()).goal).toBeNull();
+  });
 
   it("maps turn started/completed events into thread session updates", async () => {
     const harness = await createHarness();

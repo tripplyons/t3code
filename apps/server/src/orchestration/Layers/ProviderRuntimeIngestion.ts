@@ -2602,6 +2602,22 @@ const make = Effect.gen(function* () {
         }
       }
 
+      if (
+        event.type === "thread.goal.updated" ||
+        (event.type === "session.started" && event.provider !== "codex")
+      ) {
+        // A Codex goal belongs to its native conversation. Other providers
+        // must not inherit its status when the thread changes provider.
+        const commandId = yield* providerCommandId(event, "thread-goal-set");
+        yield* orchestrationEngine.dispatch({
+          type: "thread.goal.set",
+          commandId,
+          threadId: thread.id,
+          goal: event.type === "thread.goal.updated" ? event.payload.goal : null,
+          createdAt: event.createdAt,
+        });
+      }
+
       const activities = runtimeEventToActivities(activityEvent, taskTitle);
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
