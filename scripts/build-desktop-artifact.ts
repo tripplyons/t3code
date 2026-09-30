@@ -2690,6 +2690,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   }
 
   if (platform === "mac") {
+    // The staged macOS addons ship Node-API prebuilds, including node-pty.
+    // Rebuilding for Electron adds an unnecessary local SDK/linker dependency.
+    buildConfig.npmRebuild = false;
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
     buildConfig.mac = {
