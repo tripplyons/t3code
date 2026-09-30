@@ -9777,7 +9777,7 @@ export default function ChatView(props: ChatViewProps) {
           />
         </WorkspacePageHeader>
 
-        {activeThread && (selectedProvider === "codex" || activeThread.goal) ? (
+        {activeThread?.goal ? (
           <ThreadGoalControl
             key={`${environmentId}:${activeThread.id}`}
             environmentId={environmentId}

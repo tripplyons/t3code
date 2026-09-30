@@ -28,7 +28,7 @@ export function ThreadGoalControl({
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
-  goal: ThreadGoal | null | undefined;
+  goal: ThreadGoal;
   disabled: boolean;
 }) {
   const updateGoal = useAtomCommand(threadEnvironment.updateGoal, { reportFailure: false });
@@ -41,8 +41,8 @@ export function ThreadGoalControl({
   const [error, setError] = useState<string | null>(null);
 
   const beginEditing = () => {
-    setObjective(goal?.objective ?? "");
-    setBudget(goal?.tokenBudget?.toString() ?? "");
+    setObjective(goal.objective);
+    setBudget(goal.tokenBudget?.toString() ?? "");
     setEditing(true);
     setError(null);
   };
@@ -77,7 +77,6 @@ export function ThreadGoalControl({
       action: "set",
       objective: objective.trim(),
       tokenBudget: parsed.tokenBudget,
-      ...(!goal ? { status: "active" } : {}),
     });
   };
 
@@ -93,20 +92,17 @@ export function ThreadGoalControl({
           setOpen(next);
           if (next) {
             setError(null);
-            if (!goal) beginEditing();
-            else setEditing(false);
+            setEditing(false);
           }
         }}
       >
         <PopoverTrigger render={<Button variant="ghost-muted" size="compact" />}>
           <TargetIcon />
-          {goal ? `Goal: ${goalStatusLabel[goal.status]}` : "Set goal"}
+          {`Goal: ${goalStatusLabel[goal.status]}`}
         </PopoverTrigger>
         <PopoverPopup width="lg" align="start">
           <div className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium">
-              {goal ? `Goal: ${goalStatusLabel[goal.status]}` : "Set a goal"}
-            </h2>
+            <h2 className="text-sm font-medium">{`Goal: ${goalStatusLabel[goal.status]}`}</h2>
             {editing ? (
               <form
                 className="flex flex-col gap-3"
@@ -144,7 +140,7 @@ export function ThreadGoalControl({
                     variant="ghost"
                     size="sm"
                     disabled={pending}
-                    onClick={() => (goal ? setEditing(false) : setOpen(false))}
+                    onClick={() => setEditing(false)}
                   >
                     Cancel
                   </Button>
@@ -153,11 +149,11 @@ export function ThreadGoalControl({
                     size="sm"
                     disabled={pending || disabled || !objective.trim()}
                   >
-                    {pending ? "Saving…" : goal ? "Save goal" : "Start goal"}
+                    {pending ? "Saving…" : "Save goal"}
                   </Button>
                 </div>
               </form>
-            ) : goal ? (
+            ) : (
               <>
                 <p className="whitespace-pre-wrap break-words text-sm">{goal.objective}</p>
                 <p className="text-xs text-muted-foreground">{goalTokenSummary(goal)}</p>
@@ -195,7 +191,7 @@ export function ThreadGoalControl({
                   </Button>
                 </div>
               </>
-            ) : null}
+            )}
             {disabled ? (
               <p className="text-xs text-muted-foreground">
                 Connect to the environment and start a conversation to manage a goal.
@@ -209,12 +205,10 @@ export function ThreadGoalControl({
           </div>
         </PopoverPopup>
       </Popover>
-      {goal ? (
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {goal.objective}
-        </span>
-      ) : null}
-      {goal?.status === "active" ? (
+      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        {goal.objective}
+      </span>
+      {goal.status === "active" ? (
         <Button
           variant="ghost-muted"
           size="compact"

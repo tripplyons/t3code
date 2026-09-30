@@ -78,14 +78,15 @@ contains a copied Codex setup. Use a fresh shadow directory and sign in again.
 
 ## Manage a goal
 
-In an existing Codex conversation, choose **Set goal** to give Codex an objective
+In an existing Codex conversation, ask Codex to set a goal with an objective
 and an optional token budget. Codex can continue across turns until it completes
 the goal or reaches a stopping condition.
 
 The thread shows the goal's current status. Open it to see token usage, edit the
 objective or budget, pause, resume, or clear it. Editing preserves its status.
-Pausing stops goal continuation; clearing removes the objective. These controls
-are available on web, desktop, and mobile and require a Codex build with goal support.
+Pausing stops goal continuation. Clearing removes the objective and hides the
+goal toolbar. These controls are available on web, desktop, and mobile and
+require a Codex build with goal support.
 
 ## Answer questions while Codex works
 

@@ -900,11 +900,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 : "absolute inset-0 bg-screen"
             }
           />
-          {props.selectedThread.goal ||
-          props.serverConfig?.providers.some(
-            (candidate) =>
-              candidate.instanceId === selectedInstanceId && candidate.driver === "codex",
-          ) ? (
+          {props.selectedThread.goal ? (
             <ThreadGoalControl
               key={selectedThreadKey}
               environmentId={props.environmentId}

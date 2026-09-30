@@ -26,7 +26,7 @@ export function ThreadGoalControl({
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
-  goal: ThreadGoal | null | undefined;
+  goal: ThreadGoal;
   disabled: boolean;
 }) {
   const updateGoal = useAtomCommand(threadEnvironment.updateGoal, { reportFailure: false });
@@ -38,8 +38,8 @@ export function ThreadGoalControl({
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const beginEditing = () => {
-    setObjective(goal?.objective ?? "");
-    setBudget(goal?.tokenBudget?.toString() ?? "");
+    setObjective(goal.objective);
+    setBudget(goal.tokenBudget?.toString() ?? "");
     setEditing(true);
     setError(null);
   };
@@ -73,7 +73,6 @@ export function ThreadGoalControl({
       action: "set",
       objective: objective.trim(),
       tokenBudget: parsed.tokenBudget,
-      ...(!goal ? { status: "active" } : {}),
     });
   };
   const close = () => {
@@ -84,25 +83,20 @@ export function ThreadGoalControl({
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={
-          goal ? `Goal: ${goalStatusLabel[goal.status]}. ${goal.objective}` : "Set goal"
-        }
+        accessibilityLabel={`Goal: ${goalStatusLabel[goal.status]}. ${goal.objective}`}
         onPress={() => {
           setOpen(true);
           setError(null);
-          if (!goal) beginEditing();
-          else setEditing(false);
+          setEditing(false);
         }}
         className="min-h-11 flex-row items-center gap-2 border-b border-border-subtle px-4 py-2"
       >
         <AppText className="text-sm font-t3-medium">
-          {goal ? `Goal: ${goalStatusLabel[goal.status]}` : "Set goal"}
+          {`Goal: ${goalStatusLabel[goal.status]}`}
         </AppText>
-        {goal ? (
-          <AppText numberOfLines={1} className="flex-1 text-sm text-foreground-secondary">
-            {goal.objective}
-          </AppText>
-        ) : null}
+        <AppText numberOfLines={1} className="flex-1 text-sm text-foreground-secondary">
+          {goal.objective}
+        </AppText>
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <KeyboardAvoidingView
@@ -115,7 +109,7 @@ export function ThreadGoalControl({
             contentContainerStyle={{ padding: 24, gap: 16 }}
           >
             <AppText accessibilityRole="header" className="text-xl font-t3-semibold">
-              {goal ? `Goal: ${goalStatusLabel[goal.status]}` : "Set a goal"}
+              {`Goal: ${goalStatusLabel[goal.status]}`}
             </AppText>
             {editing ? (
               <>
@@ -142,7 +136,7 @@ export function ThreadGoalControl({
                   Codex continues across turns until the goal is complete or stopped.
                 </AppText>
                 <MaterialButton
-                  label={pending ? "Saving…" : goal ? "Save goal" : "Start goal"}
+                  label={pending ? "Saving…" : "Save goal"}
                   tone="primary"
                   disabled={pending || disabled || !objective.trim()}
                   onPress={save}
@@ -151,10 +145,10 @@ export function ThreadGoalControl({
                   label="Cancel"
                   tone="text"
                   disabled={pending}
-                  onPress={() => (goal ? setEditing(false) : close())}
+                  onPress={() => setEditing(false)}
                 />
               </>
-            ) : goal ? (
+            ) : (
               <>
                 <AppText selectable>{goal.objective}</AppText>
                 <AppText className="text-sm text-foreground-secondary">
@@ -185,7 +179,7 @@ export function ThreadGoalControl({
                   />
                 </View>
               </>
-            ) : null}
+            )}
             {disabled ? (
               <AppText className="text-sm text-foreground-secondary">
                 Connect to the environment and start a conversation to manage a goal.
