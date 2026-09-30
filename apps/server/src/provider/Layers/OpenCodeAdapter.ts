@@ -577,7 +577,7 @@ export function makeOpenCodeAdapter(
       },
     ) =>
       nativeEventLogger
-        ? nativeEventLogger.write(event, threadId).pipe(Effect.catchCause(() => Effect.void))
+        ? nativeEventLogger.write(event, threadId).pipe(Effect.ignoreCause)
         : Effect.void;
 
     /** Closes asks the turn left open, so no client keeps an approval nobody is waiting on. */
@@ -1129,6 +1129,7 @@ export function makeOpenCodeAdapter(
     });
 
     const startEventPump = Effect.fn("startEventPump")(function* (context: OpenCodeSessionContext) {
+      // @effect-diagnostics-next-line abortControllerInEffect:off - aborted by a scope finalizer to cancel the SDK's event.subscribe fetch
       const eventsAbortController = new AbortController();
 
       // Fibers forked into `context.sessionScope` are interrupted
