@@ -53,6 +53,16 @@ You can also send `/compact` in an existing conversation. Web and desktop offer
 a large older thread. See [commands and skills](./composer.md#commands-and-skills)
 for using composer commands.
 
+## Set a goal
+
+Send `/goal <condition>` to have Claude keep working until the condition is
+met. The thread shows the goal while it is active, on web, desktop, and mobile.
+Claude clears the goal once it judges the condition met. To stop early, stop the
+turn and send `/goal clear`. Send `/goal` alone to check the goal's status.
+
+Unlike Codex goals, a Claude goal has no token budget or pause, and the thread
+cannot edit it.
+
 ## Usage limits
 
 If your Claude subscription runs out of usage mid-turn, the thread shows which

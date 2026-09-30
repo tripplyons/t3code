@@ -1557,6 +1557,119 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("tracks the Claude /goal from command replies, Stop hooks, and results", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "/goal tests pass",
+        attachments: [],
+      });
+
+      const synthetic = (uuid: string, text: string) =>
+        ({
+          type: "assistant",
+          session_id: "sdk-session-goal",
+          uuid,
+          parent_tool_use_id: null,
+          message: { id: uuid, model: "<synthetic>", content: [{ type: "text", text }] },
+        }) as unknown as SDKMessage;
+      const stopHookFeedback = (uuid: string, condition: string) =>
+        ({
+          type: "user",
+          session_id: "sdk-session-goal",
+          uuid,
+          parent_tool_use_id: null,
+          message: {
+            role: "user",
+            content: `Stop hook feedback:\n[${condition}]: Two tests still fail.`,
+          },
+        }) as unknown as SDKMessage;
+      const success = (uuid: string, numTurns: number) =>
+        ({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          errors: [],
+          num_turns: numTurns,
+          session_id: "sdk-session-goal",
+          uuid,
+        }) as unknown as SDKMessage;
+
+      harness.query.emit(synthetic("goal-set", "Goal set: tests pass"));
+      // Unmet: the goal stays active, and repeat feedback is not re-announced.
+      harness.query.emit(stopHookFeedback("feedback-1", "tests pass"));
+      // Met: the Stop hook let Claude finish the turn.
+      harness.query.emit(success("result-met", 3));
+      // Feedback from a deferred check revives the goal.
+      harness.query.emit(stopHookFeedback("feedback-2", "tests pass"));
+      // Other Stop hooks do not.
+      harness.query.emit(stopHookFeedback("feedback-other", "lint passes"));
+      harness.query.emit(synthetic("goal-cleared", "Goal cleared: tests pass"));
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-goal",
+        uuid: "propose-goal",
+        parent_tool_use_id: null,
+        message: {
+          id: "propose-goal",
+          model: "claude-opus-4-6",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-propose-goal",
+              name: "ProposeGoal",
+              input: { condition: "docs build" },
+            },
+          ],
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-goal",
+        uuid: "propose-goal-result",
+        parent_tool_use_id: null,
+        tool_use_result: { condition: "docs build", askUser: false },
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-propose-goal", content: "ok" }],
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit(synthetic("goal-status", "Goal active: docs build (1 check)"));
+      // A status query runs no model turn and so says nothing about the goal.
+      harness.query.emit(success("result-status", 0));
+      harness.query.finish();
+
+      const goals = Array.from(yield* Fiber.join(runtimeEventsFiber)).flatMap((event) =>
+        event.type === "thread.goal.updated" ? [event.payload.goal] : [],
+      );
+      assert.deepEqual(
+        goals.map((goal) => goal && [goal.objective, goal.status, goal.tokensUsed]),
+        [
+          ["tests pass", "active", null],
+          null,
+          ["tests pass", "active", null],
+          null,
+          ["docs build", "active", null],
+        ],
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("steers a running turn instead of opening a new one on mid-turn sendTurn", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

@@ -21,7 +21,13 @@ export function parseGoalTokenBudget(value: string) {
   return { tokenBudget };
 }
 
+/** Claude goals are set and cleared with `/goal` in the composer. */
+export function goalIsReadOnly(goal: ThreadGoal) {
+  return goal.provider === "claudeAgent";
+}
+
 export function goalTokenSummary(goal: ThreadGoal) {
+  if (goal.tokensUsed === null) return null;
   const used = goal.tokensUsed.toLocaleString();
   return goal.tokenBudget === null
     ? `${used} tokens used`

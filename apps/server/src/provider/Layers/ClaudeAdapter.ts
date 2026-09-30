@@ -57,6 +57,7 @@ import {
   type TaskRunHandles,
   ThreadId,
   TurnId,
+  type ThreadGoal,
   type UserInputQuestion,
 } from "@t3tools/contracts";
 import {
@@ -457,6 +458,10 @@ interface ClaudeSessionContext {
   announcedUsageLimits: { turnId: string; keys: Set<string> } | undefined;
   /** Resolved by completeTurn while Stop waits for Claude to abort the turn. */
   interruptedTurnSettled: Deferred.Deferred<void> | undefined;
+  /** Last `/goal` reported to T3; undefined while a resumed session's goal is unknown. */
+  goal: ThreadGoal | null | undefined;
+  /** Kept after the goal clears, so later Stop hook feedback can revive it. */
+  lastGoalCondition: string | undefined;
   stopped: boolean;
 }
 
@@ -1826,6 +1831,54 @@ function extractTextContent(value: unknown): string {
   }
 
   return extractTextContent(record.content);
+}
+
+/**
+ * Reads how a main-session SDK message changes Claude's `/goal`. Returns the
+ * goal condition, `null` when the goal is gone, or `undefined` for no change.
+ * Claude reports goals only as command replies, Stop hook feedback, and the
+ * ProposeGoal tool; a completed turn means the Stop hook let Claude stop,
+ * which Claude does only after clearing a met goal.
+ */
+function claudeGoalTransition(
+  message: SDKMessage,
+  lastCondition: string | undefined,
+  toolNameForUseId: (toolUseId: string) => string | undefined,
+): string | null | undefined {
+  if ((message as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
+    return undefined;
+  }
+  switch (message.type) {
+    case "assistant": {
+      if (message.message.model !== "<synthetic>") return undefined;
+      const text = extractTextContent(message.message.content).trim();
+      const set = /^Goal set: ([\s\S]+)$/.exec(text);
+      if (set) return set[1]!.trim();
+      const active = /^Goal active: (.+) \([^()]*\)$/m.exec(text);
+      if (active && text.startsWith(active[0])) return active[1]!.trim();
+      return text.startsWith("Goal cleared:") || text.startsWith("No goal set") ? null : undefined;
+    }
+    case "user": {
+      for (const toolResult of toolResultBlocksFromUserMessage(message)) {
+        if (toolResult.isError || toolNameForUseId(toolResult.toolUseId) !== "ProposeGoal") {
+          continue;
+        }
+        const condition = readClaudeToolUseResult(message)?.condition;
+        if (typeof condition === "string" && condition.trim()) return condition.trim();
+      }
+      if (lastCondition === undefined) return undefined;
+      const text = extractTextContent(message.message.content);
+      return text.startsWith(`Stop hook feedback:\n[${lastCondition}]:`)
+        ? lastCondition
+        : undefined;
+    }
+    case "result":
+      return message.subtype === "success" && message.is_error !== true && message.num_turns > 0
+        ? null
+        : undefined;
+    default:
+      return undefined;
+  }
 }
 
 function extractExitPlanModePlan(value: unknown): string | undefined {
@@ -4139,6 +4192,46 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  const trackGoal = Effect.fn("trackGoal")(function* (
+    context: ClaudeSessionContext,
+    message: SDKMessage,
+  ) {
+    const condition = claudeGoalTransition(
+      message,
+      context.lastGoalCondition,
+      (toolUseId) =>
+        Array.from(context.inFlightTools.values()).find((tool) => tool.itemId === toolUseId)
+          ?.toolName,
+    );
+    if (condition === undefined || (condition === null && context.goal === null)) return;
+    if (condition !== null && context.goal?.objective === condition) return;
+    const stamp = yield* makeEventStamp();
+    const now = Math.floor(Date.parse(stamp.createdAt) / 1000);
+    const goal: ThreadGoal | null =
+      condition === null
+        ? null
+        : {
+            objective: condition,
+            status: "active",
+            tokenBudget: null,
+            tokensUsed: null,
+            timeUsedSeconds: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+    context.goal = goal;
+    if (condition !== null) context.lastGoalCondition = condition;
+    yield* offerRuntimeEvent({
+      ...stamp,
+      provider: PROVIDER,
+      threadId: context.session.threadId,
+      providerRefs: nativeProviderRefs(context),
+      raw: { source: "claude.sdk.message", method: message.type, payload: message },
+      type: "thread.goal.updated",
+      payload: { goal },
+    });
+  });
+
   const handleSdkMessage = Effect.fn("handleSdkMessage")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -4150,6 +4243,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     if (sdkMessageType(message) === "command_lifecycle") {
       return;
     }
+    // Before dispatch, while the ProposeGoal call is still in flight.
+    yield* trackGoal(context, message);
 
     switch (message.type) {
       case "stream_event":
@@ -5055,6 +5150,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastThreadStartedId: undefined,
         announcedUsageLimits: undefined,
         interruptedTurnSettled: undefined,
+        // A new conversation has no goal; a resumed one may carry one forward.
+        goal: existingResumeSessionId ? undefined : null,
+        lastGoalCondition: undefined,
         stopped: false,
       };
       yield* Ref.set(contextRef, context);

@@ -468,9 +468,10 @@ describe("ProviderRuntimeIngestion", () => {
           payload: { goal: state },
         },
       ]);
-      expect((await harness.readThreadShell()).goal).toEqual(state);
+      const stored = state && { ...state, provider: ProviderDriverKind.make("codex") };
+      expect((await harness.readThreadShell()).goal).toEqual(stored);
       const snapshot = await harness.readModel();
-      expect(snapshot.threads[0]?.goal).toEqual(state);
+      expect(snapshot.threads[0]?.goal).toEqual(stored);
       expect(snapshot.threads[0]?.activities).toEqual([]);
       await harness.emitAndDrain([
         {
@@ -486,38 +487,44 @@ describe("ProviderRuntimeIngestion", () => {
     }
   });
 
-  it("drops the Codex goal view when another provider starts", async () => {
+  it("keeps a goal only across sessions of the provider that owns it", async () => {
     const harness = await createHarness();
+    const goal = {
+      objective: "Finish",
+      status: "active" as const,
+      tokenBudget: null,
+      tokensUsed: null,
+      timeUsedSeconds: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const emitSessionStarted = (id: string, provider: string) =>
+      harness.emitAndDrain([
+        {
+          type: "session.started",
+          eventId: asEventId(id),
+          provider: ProviderDriverKind.make(provider),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          payload: {},
+        },
+      ]);
     await harness.emitAndDrain([
       {
         type: "thread.goal.updated",
         eventId: asEventId("evt-provider-goal"),
-        provider: ProviderDriverKind.make("codex"),
-        threadId: asThreadId("thread-1"),
-        createdAt: "2026-01-01T00:00:00.000Z",
-        payload: {
-          goal: {
-            objective: "Finish",
-            status: "active",
-            tokenBudget: null,
-            tokensUsed: 0,
-            timeUsedSeconds: 0,
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        },
-      },
-    ]);
-    await harness.emitAndDrain([
-      {
-        type: "session.started",
-        eventId: asEventId("evt-provider-switch"),
         provider: ProviderDriverKind.make("claudeAgent"),
         threadId: asThreadId("thread-1"),
         createdAt: "2026-01-01T00:00:00.000Z",
-        payload: {},
+        payload: { goal },
       },
     ]);
+    await emitSessionStarted("evt-provider-resume", "claudeAgent");
+    expect((await harness.readThreadShell()).goal).toEqual({
+      ...goal,
+      provider: ProviderDriverKind.make("claudeAgent"),
+    });
+    await emitSessionStarted("evt-provider-switch", "codex");
     expect((await harness.readThreadShell()).goal).toBeNull();
   });
 

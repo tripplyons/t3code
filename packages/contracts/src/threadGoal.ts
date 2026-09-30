@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind } from "./providerInstance.ts";
 
 export const ThreadGoal = Schema.Struct({
   objective: TrimmedNonEmptyString,
@@ -12,10 +13,13 @@ export const ThreadGoal = Schema.Struct({
     "complete",
   ]),
   tokenBudget: Schema.NullOr(PositiveInt),
-  tokensUsed: NonNegativeInt,
-  timeUsedSeconds: NonNegativeInt,
+  // Null when the provider does not report goal usage, as with Claude.
+  tokensUsed: Schema.NullOr(NonNegativeInt),
+  timeUsedSeconds: Schema.NullOr(NonNegativeInt),
   createdAt: NonNegativeInt,
   updatedAt: NonNegativeInt,
+  // The provider whose conversation owns the goal. Stamped by ingestion.
+  provider: Schema.optional(ProviderDriverKind),
 });
 export type ThreadGoal = typeof ThreadGoal.Type;
 

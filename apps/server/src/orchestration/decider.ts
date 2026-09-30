@@ -1886,6 +1886,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     case "thread.goal.set": {
       const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
       if (threadGoalsEqual(thread.goal ?? null, command.goal)) return [];
+      if (
+        command.retainProvider !== undefined &&
+        thread.goal?.provider === command.retainProvider
+      ) {
+        return [];
+      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",

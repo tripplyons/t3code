@@ -2602,18 +2602,17 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (
-        event.type === "thread.goal.updated" ||
-        (event.type === "session.started" && event.provider !== "codex")
-      ) {
-        // A Codex goal belongs to its native conversation. Other providers
-        // must not inherit its status when the thread changes provider.
+      if (event.type === "thread.goal.updated" || event.type === "session.started") {
+        // A goal belongs to its provider's native conversation. A session from
+        // another provider must not inherit it when the thread changes provider.
         const commandId = yield* providerCommandId(event, "thread-goal-set");
+        const goal = event.type === "thread.goal.updated" ? event.payload.goal : null;
         yield* orchestrationEngine.dispatch({
           type: "thread.goal.set",
           commandId,
           threadId: thread.id,
-          goal: event.type === "thread.goal.updated" ? event.payload.goal : null,
+          goal: goal && { ...goal, provider: event.provider },
+          ...(event.type === "session.started" ? { retainProvider: event.provider } : {}),
           createdAt: event.createdAt,
         });
       }

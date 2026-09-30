@@ -24,7 +24,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
-import { ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   PullRequestActor,
   PullRequestChecksState,
@@ -1512,6 +1512,8 @@ const ThreadGoalSetCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   goal: Schema.NullOr(ThreadGoal),
+  // Keeps an existing goal owned by this provider instead of applying `goal`.
+  retainProvider: Schema.optional(ProviderDriverKind),
   createdAt: IsoDateTime,
 });
 

@@ -7,6 +7,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import {
+  goalIsReadOnly,
   goalStatusLabel,
   goalTokenSummary,
   parseGoalTokenBudget,
@@ -37,6 +38,8 @@ export function ThreadGoalControl({
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const readOnly = goalIsReadOnly(goal);
+  const tokenSummary = goalTokenSummary(goal);
   const beginEditing = () => {
     setObjective(goal.objective);
     setBudget(goal.tokenBudget?.toString() ?? "");
@@ -151,36 +154,43 @@ export function ThreadGoalControl({
             ) : (
               <>
                 <AppText selectable>{goal.objective}</AppText>
-                <AppText className="text-sm text-foreground-secondary">
-                  {goalTokenSummary(goal)}
-                </AppText>
-                <View className="flex-row flex-wrap gap-2">
-                  <MaterialButton
-                    label={goal.status === "active" ? "Pause" : "Resume"}
-                    disabled={pending || disabled}
-                    onPress={() =>
-                      void mutate({
-                        threadId,
-                        action: "set",
-                        status: goal.status === "active" ? "paused" : "active",
-                      })
-                    }
-                  />
-                  <MaterialButton
-                    label="Edit"
-                    disabled={pending || disabled}
-                    onPress={beginEditing}
-                  />
-                  <MaterialButton
-                    label="Clear"
-                    tone="danger"
-                    disabled={pending || disabled}
-                    onPress={() => void mutate({ threadId, action: "clear" })}
-                  />
-                </View>
+                {tokenSummary ? (
+                  <AppText className="text-sm text-foreground-secondary">{tokenSummary}</AppText>
+                ) : null}
+                {readOnly ? (
+                  <AppText className="text-sm text-foreground-secondary">
+                    Claude clears the goal once its condition is met. To end it early, stop the turn
+                    and send /goal clear.
+                  </AppText>
+                ) : (
+                  <View className="flex-row flex-wrap gap-2">
+                    <MaterialButton
+                      label={goal.status === "active" ? "Pause" : "Resume"}
+                      disabled={pending || disabled}
+                      onPress={() =>
+                        void mutate({
+                          threadId,
+                          action: "set",
+                          status: goal.status === "active" ? "paused" : "active",
+                        })
+                      }
+                    />
+                    <MaterialButton
+                      label="Edit"
+                      disabled={pending || disabled}
+                      onPress={beginEditing}
+                    />
+                    <MaterialButton
+                      label="Clear"
+                      tone="danger"
+                      disabled={pending || disabled}
+                      onPress={() => void mutate({ threadId, action: "clear" })}
+                    />
+                  </View>
+                )}
               </>
             )}
-            {disabled ? (
+            {disabled && !readOnly ? (
               <AppText className="text-sm text-foreground-secondary">
                 Connect to the environment and start a conversation to manage a goal.
               </AppText>

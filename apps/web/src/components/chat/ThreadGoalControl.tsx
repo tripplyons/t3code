@@ -7,6 +7,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import {
+  goalIsReadOnly,
   goalStatusLabel,
   goalTokenSummary,
   parseGoalTokenBudget,
@@ -39,6 +40,8 @@ export function ThreadGoalControl({
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const readOnly = goalIsReadOnly(goal);
+  const tokenSummary = goalTokenSummary(goal);
 
   const beginEditing = () => {
     setObjective(goal.objective);
@@ -83,7 +86,7 @@ export function ThreadGoalControl({
   return (
     <div
       className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-1.5"
-      aria-label="Codex goal"
+      aria-label="Thread goal"
     >
       <Popover
         open={open}
@@ -156,43 +159,52 @@ export function ThreadGoalControl({
             ) : (
               <>
                 <p className="whitespace-pre-wrap break-words text-sm">{goal.objective}</p>
-                <p className="text-xs text-muted-foreground">{goalTokenSummary(goal)}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending || disabled}
-                    onClick={() =>
-                      void mutate({
-                        threadId,
-                        action: "set",
-                        status: goal.status === "active" ? "paused" : "active",
-                      })
-                    }
-                  >
-                    {goal.status === "active" ? <PauseIcon /> : <PlayIcon />}
-                    {goal.status === "active" ? "Pause" : "Resume"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending || disabled}
-                    onClick={beginEditing}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="ghost-destructive"
-                    size="sm"
-                    disabled={pending || disabled}
-                    onClick={() => void mutate({ threadId, action: "clear" })}
-                  >
-                    Clear
-                  </Button>
-                </div>
+                {tokenSummary ? (
+                  <p className="text-xs text-muted-foreground">{tokenSummary}</p>
+                ) : null}
+                {readOnly ? (
+                  <p className="text-xs text-muted-foreground">
+                    Claude clears the goal once its condition is met. To end it early, stop the turn
+                    and send /goal clear.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending || disabled}
+                      onClick={() =>
+                        void mutate({
+                          threadId,
+                          action: "set",
+                          status: goal.status === "active" ? "paused" : "active",
+                        })
+                      }
+                    >
+                      {goal.status === "active" ? <PauseIcon /> : <PlayIcon />}
+                      {goal.status === "active" ? "Pause" : "Resume"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending || disabled}
+                      onClick={beginEditing}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost-destructive"
+                      size="sm"
+                      disabled={pending || disabled}
+                      onClick={() => void mutate({ threadId, action: "clear" })}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
               </>
             )}
-            {disabled ? (
+            {disabled && !readOnly ? (
               <p className="text-xs text-muted-foreground">
                 Connect to the environment and start a conversation to manage a goal.
               </p>
@@ -208,18 +220,6 @@ export function ThreadGoalControl({
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
         {goal.objective}
       </span>
-      {goal.status === "active" ? (
-        <Button
-          variant="ghost-muted"
-          size="compact"
-          disabled={pending || disabled}
-          aria-label="Pause goal"
-          onClick={() => void mutate({ threadId, action: "set", status: "paused" })}
-        >
-          <PauseIcon />
-          Pause
-        </Button>
-      ) : null}
     </div>
   );
 }
