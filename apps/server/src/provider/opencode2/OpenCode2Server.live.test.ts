@@ -5,6 +5,7 @@
  *
  * No model is called. The server runs with isolated HOME and XDG directories.
  */
+import { satisfiesSemverRange } from "@t3tools/shared/semver";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AbsolutePath, Location } from "@opencode/client/effect";
 import { assert, it } from "@effect/vitest";
@@ -146,7 +147,7 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
             return { ...connection, pid: info.pid, session };
           }),
         );
-        assert.strictEqual(spawned.version, "2.0.18");
+        assert.isTrue(satisfiesSemverRange(spawned.version, ">=2.0.18"));
         assert.isFalse(spawned.external);
         assert.isTrue(isAlive(spawned.pid));
 
@@ -203,7 +204,7 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         const utf8Connection = yield* utf8.withConnection((connection) =>
           Effect.succeed(connection),
         );
-        assert.strictEqual(utf8Connection.version, "2.0.18");
+        assert.strictEqual(utf8Connection.version, spawned.version);
         assert.isTrue(utf8Connection.external);
         const asciiOnly = yield* OpenCode2Server.make({
           binaryPath: binaryPath!,

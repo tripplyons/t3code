@@ -5,9 +5,13 @@ import {
   type ServerProvider,
   type ServerProviderCompatibilityAdvisory,
 } from "@t3tools/contracts";
-import { satisfiesSemverRange } from "@t3tools/shared/semver";
+import { compareSemverVersions, satisfiesSemverRange } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 import packageJson from "../../package.json" with { type: "json" };
+
+// This source runs the V2 orchestrator even before release tooling updates the package version.
+const runtimeCompatibilityVersion =
+  compareSemverVersions(packageJson.version, "0.0.46") < 0 ? "0.0.46" : packageJson.version;
 
 // Deliberately uses the shared CLI gate syntax: comparator groups joined by ||.
 // Prereleases and unrecognized release tags remain unknown.
@@ -60,7 +64,7 @@ export function resolveProviderCompatibility(
   policies: ReadonlyArray<ProviderCompatibilityPolicy> | undefined,
   driver: ProviderDriverKind,
   version: string | null,
-  t3CodeVersion = packageJson.version,
+  t3CodeVersion = runtimeCompatibilityVersion,
 ): ServerProviderCompatibilityAdvisory | undefined {
   const policy = policies?.find(
     (entry) => entry.driver === driver && satisfiesSemverRange(t3CodeVersion, entry.t3CodeRange),

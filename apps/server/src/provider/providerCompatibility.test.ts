@@ -100,6 +100,17 @@ describe("provider compatibility", () => {
     );
   });
 
+  it("uses the current runtime policy before the package release version is updated", () => {
+    const advisory = resolveProviderCompatibility(
+      ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
+      ProviderDriverKind.make("opencode"),
+      "2.0.22",
+    );
+    assert.strictEqual(advisory?.status, "supported");
+    assert.strictEqual(advisory?.recommendedRange, ">=2.0.18");
+    assert.isNull(advisory?.message);
+  });
+
   it("supports OpenCode 2 and gives OpenCode 1.x limited support", () => {
     const opencode = ProviderDriverKind.make("opencode");
     for (const [version, expected] of [
