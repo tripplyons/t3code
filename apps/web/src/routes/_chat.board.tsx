@@ -62,7 +62,7 @@ function ThreadBoard() {
   );
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden">
       <WorkspacePageHeader electron={isElectron} className="bg-background">
         <h1 className="shrink-0 text-sm font-medium">Board</h1>
         <div className="[-webkit-app-region:no-drag] ml-auto min-w-0 w-44 sm:w-64">
@@ -113,7 +113,7 @@ function ThreadBoard() {
                         {jumpLabel && (
                           <span
                             aria-hidden
-                            className="pointer-events-none absolute right-2 top-2 inline-flex h-5 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+                            className="pointer-events-none absolute right-2 top-2 inline-flex h-5 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
                           >
                             {jumpLabel}
                           </span>

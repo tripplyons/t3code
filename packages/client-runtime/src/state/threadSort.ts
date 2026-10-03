@@ -1,5 +1,8 @@
-import type { OrchestrationThreadShell, ProjectId } from "@t3tools/contracts";
+import type { ProjectId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import type { EnvironmentThreadShell } from "./models.ts";
+import * as Arr from "effect/Array";
+import * as Order from "effect/Order";
 
 export interface ThreadSortInput {
   readonly createdAt: string;
@@ -18,8 +21,8 @@ export function toSortableTimestamp(iso: string | undefined): number | null {
 }
 
 export type SettledThreadTimestampInput = Pick<
-  OrchestrationThreadShell,
-  "settledAt" | "latestUserMessageAt" | "latestTurn" | "updatedAt"
+  EnvironmentThreadShell,
+  "settledAt" | "latestUserMessageAt" | "latestRun" | "updatedAt"
 >;
 
 /** The timestamp a settled row sorts and labels by on every client: settledAt
@@ -33,9 +36,9 @@ export function resolveSettledThreadTimestamp(thread: SettledThreadTimestampInpu
   let latestMs = Number.NEGATIVE_INFINITY;
   for (const candidate of [
     thread.latestUserMessageAt,
-    thread.latestTurn?.requestedAt,
-    thread.latestTurn?.startedAt,
-    thread.latestTurn?.completedAt,
+    thread.latestRun?.requestedAt,
+    thread.latestRun?.startedAt,
+    thread.latestRun?.completedAt,
   ]) {
     const parsed = toSortableTimestamp(candidate ?? undefined);
     if (candidate != null && parsed !== null && parsed > latestMs) {
@@ -123,7 +126,7 @@ export function getThreadSortTimestamp(
  * creation-order slot. Shared by web and
  * mobile so both render the same order. Malformed timestamps sink to 0.
  */
-function activeThreadAnchorTimestampMs(thread: {
+export function activeThreadAnchorTimestampMs(thread: {
   readonly createdAt: string;
   readonly unsettledAt?: string | null | undefined;
 }): number {
@@ -336,10 +339,7 @@ export function sortPinnedThreadsByOrderKey<
 }
 
 type ThreadBoardStatusInput = Partial<
-  Pick<
-    OrchestrationThreadShell,
-    "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
-  >
+  Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "runtime">
 >;
 
 /** Shared by the board and active lists on every client. */
@@ -347,10 +347,13 @@ export function resolveThreadBoardGroup(
   thread: ThreadBoardStatusInput,
 ): "needs-you" | "working" | "idle" {
   if (thread.hasPendingApprovals || thread.hasPendingUserInput) return "needs-you";
-  if (thread.session?.status === "running" || thread.session?.status === "starting")
-    return "working";
-  if (thread.session?.status === "error") return "needs-you";
-  if (thread.backgroundLiveness === "working" || thread.backgroundLiveness === "monitoring")
+  if (thread.runtime?.status === "failed") return "needs-you";
+  if (
+    thread.runtime &&
+    ["preparing", "queued", "starting", "running", "waiting", "idle"].includes(
+      thread.runtime.status,
+    )
+  )
     return "working";
   return "idle";
 }

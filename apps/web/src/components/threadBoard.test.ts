@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  RunId,
+  OrchestrationV2ThreadShell,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import type { SidebarThreadSummary } from "../types";
 import { sortThreadsForSidebar } from "./Sidebar.logic";
 import { buildThreadBoard, resolveThreadBoardColumn } from "./threadBoard";
@@ -9,6 +17,43 @@ const environmentId = EnvironmentId.make("local");
 const options = { now, snoozeSupported: true };
 function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSummary {
   return {
+    source: OrchestrationV2ThreadShell.make({
+      createdBy: "user",
+      creationSource: "web",
+      id: ThreadId.make("thread"),
+      projectId: ProjectId.make("project"),
+      title: "Task",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      lineage: {
+        parentThreadId: null,
+        rootThreadId: ThreadId.make("thread"),
+        relationshipToParent: null,
+      },
+      forkedFrom: null,
+      activeProviderThreadId: null,
+      latestRunId: null,
+      activeRunId: null,
+      status: "idle",
+      pendingRuntimeRequest: null,
+      latestVisibleMessage: null,
+      latestUserMessageAt: null,
+      hasActionableProposedPlan: false,
+      pendingBackgroundTasks: [],
+      providerInstanceHistory: [],
+      itemCount: 0,
+      visibleItemCount: 0,
+      createdAt: DateTime.makeUnsafe(now),
+      updatedAt: DateTime.makeUnsafe(now),
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      deletedAt: null,
+    }),
     id: ThreadId.make("thread"),
     environmentId,
     projectId: ProjectId.make("project"),
@@ -19,13 +64,32 @@ function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSum
     branch: null,
     worktreePath: null,
     pullRequests: [],
-    latestTurn: null,
+    latestRun: null,
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
+    deletedAt: null,
     settledAt: null,
     settledOverride: null,
-    session: null,
+    runtime: null,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    lineage: {
+      parentThreadId: null,
+      rootThreadId: ThreadId.make("thread"),
+      relationshipToParent: null,
+    },
+    forkedFrom: null,
+    activeProviderThreadId: null,
+    providerInstanceHistory: [],
+    pendingBackgroundTasks: [],
+    itemCount: 0,
+    visibleItemCount: 0,
+    unsettledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
+    activeOrderKey: null,
     latestUserMessageAt: null,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
@@ -33,9 +97,21 @@ function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSum
     ...overrides,
   };
 }
+function runtime(
+  status: NonNullable<SidebarThreadSummary["runtime"]>["status"],
+): NonNullable<SidebarThreadSummary["runtime"]> {
+  return {
+    status,
+    activeRunId: null,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    providerName: "Codex",
+    lastError: null,
+    updatedAt: now,
+  };
+}
 const completed = {
-  turnId: TurnId.make("turn"),
-  state: "completed" as const,
+  runId: RunId.make("turn"),
+  status: "completed" as const,
   requestedAt: now,
   startedAt: now,
   completedAt: now,
@@ -50,19 +126,17 @@ describe("thread board", () => {
   it("automatically sorts the sidebar in board order as threads change status", () => {
     const rows = [
       thread({ id: ThreadId.make("idle"), createdAt: "2026-09-20T12:00:00.000Z" }),
-      thread({ id: ThreadId.make("working"), backgroundLiveness: "working" }),
-      thread({ id: ThreadId.make("monitoring"), backgroundLiveness: "monitoring" }),
+      thread({ id: ThreadId.make("working"), runtime: runtime("running") }),
+      thread({ id: ThreadId.make("monitoring"), runtime: runtime("idle") }),
       thread({ id: ThreadId.make("input"), hasPendingUserInput: true, activeOrderKey: "z" }),
       thread({ id: ThreadId.make("approval"), hasPendingApprovals: true, activeOrderKey: "b" }),
       thread({
         id: ThreadId.make("error"),
-        backgroundLiveness: "working",
-        session: {
-          threadId: ThreadId.make("error"),
-          status: "error",
+        runtime: {
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          status: "failed",
           providerName: "Codex",
-          runtimeMode: "full-access",
-          activeTurnId: null,
+          activeRunId: null,
           lastError: "Failed",
           updatedAt: now,
         },
@@ -104,29 +178,25 @@ describe("thread board", () => {
 
   it("groups completed results and proposed plans with idle threads", () => {
     expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
-    expect(resolveThreadBoardColumn(thread({ latestTurn: completed }), options)).toBe("idle");
+    expect(resolveThreadBoardColumn(thread({ latestRun: completed }), options)).toBe("idle");
     expect(resolveThreadBoardColumn(thread({ hasActionableProposedPlan: true }), options)).toBe(
       "idle",
     );
   });
-  it.each(["working", "monitoring"] as const)(
-    "keeps live background %s out of Idle",
-    (backgroundLiveness) => {
-      expect(
-        resolveThreadBoardColumn(thread({ latestTurn: completed, backgroundLiveness }), options),
-      ).toBe("working");
-    },
-  );
+  it.each(["running", "idle"] as const)("keeps live background %s out of Idle", (status) => {
+    expect(
+      resolveThreadBoardColumn(thread({ latestRun: completed, runtime: runtime(status) }), options),
+    ).toBe("working");
+  });
   it.each(["starting", "running"] as const)("shows a %s session as Working", (status) => {
     expect(
       resolveThreadBoardColumn(
         thread({
-          session: {
-            threadId: ThreadId.make("thread"),
+          runtime: {
+            providerInstanceId: ProviderInstanceId.make("codex"),
             status,
             providerName: "Codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
+            activeRunId: null,
             lastError: null,
             updatedAt: now,
           },
@@ -139,13 +209,11 @@ describe("thread board", () => {
     expect(
       resolveThreadBoardColumn(
         thread({
-          backgroundLiveness: "working",
-          session: {
-            threadId: ThreadId.make("thread"),
-            status: "error",
+          runtime: {
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            status: "failed",
             providerName: "Codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
+            activeRunId: null,
             lastError: "Failed",
             updatedAt: now,
           },
@@ -162,7 +230,7 @@ describe("thread board", () => {
     expect(
       resolveThreadBoardColumn(thread({ ...snoozed, hasPendingUserInput: true }), options),
     ).toBe("needs-you");
-    expect(resolveThreadBoardColumn(thread({ ...snoozed, latestTurn: completed }), options)).toBe(
+    expect(resolveThreadBoardColumn(thread({ ...snoozed, latestRun: completed }), options)).toBe(
       "idle",
     );
     expect(

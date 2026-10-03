@@ -13,11 +13,9 @@ function actionFor(
   // OpenCode uses the last matching rule. Its wildcards match directory separators.
   return buildOpenCodePermissionRules(runtimeMode).findLast(
     (rule) =>
-      (rule.action === "*" || rule.action === permission) &&
-      new RegExp(`^${RegExpUtils.escape(rule.resource).replaceAll("\\*", ".*")}$`, "s").test(
-        target,
-      ),
-  )?.effect;
+      (rule.permission === "*" || rule.permission === permission) &&
+      new RegExp(`^${RegExpUtils.escape(rule.pattern).replaceAll("\\*", ".*")}$`, "s").test(target),
+  )?.action;
 }
 
 describe("buildOpenCodePermissionRules", () => {
@@ -35,9 +33,9 @@ describe("buildOpenCodePermissionRules", () => {
     NodeAssert.equal(actionFor("auto", "edit"), "ask");
   });
 
-  it("allows workspace reads and questions without asking in supervised modes", () => {
+  it("allows workspace reads and task updates without asking in supervised modes", () => {
     for (const runtimeMode of ["approval-required", "auto-accept-edits", "auto"] as const) {
-      for (const permission of ["read", "glob", "grep", "skill", "question"]) {
+      for (const permission of ["read", "glob", "grep", "lsp", "skill", "todowrite"]) {
         NodeAssert.equal(actionFor(runtimeMode, permission, "src/index.ts"), "allow");
       }
     }
@@ -72,7 +70,8 @@ describe("buildOpenCodePermissionRules", () => {
 
   it("allows everything only under full access", () => {
     NodeAssert.deepEqual(buildOpenCodePermissionRules("full-access"), [
-      { action: "*", resource: "*", effect: "allow" },
+      { permission: "*", pattern: "*", action: "allow" },
+      { permission: "external_directory", pattern: "*", action: "allow" },
     ]);
   });
 });
