@@ -49,19 +49,13 @@ Set **Auto-compact after** in the Claude provider settings to an integer between
 window. Leave it empty for Claude Code's default.
 
 You can also send `/compact` in an existing conversation. Web and desktop offer
-**Compact context** from the context meter and may suggest it when you return to
-a large older thread. See [commands and skills](./composer.md#commands-and-skills)
-for using composer commands.
-
-## Set a goal
-
-Send `/goal <condition>` to have Claude keep working until the condition is
-met. The thread shows the goal while it is active, on web, desktop, and mobile.
-Claude clears the goal once it judges the condition met. To stop early, stop the
-turn and send `/goal clear`. Send `/goal` alone to check the goal's status.
-
-Unlike Codex goals, a Claude goal has no token budget or pause, and the thread
-cannot edit it.
+**Compact context** from the context meter. When you return to a large thread
+after Claude's prompt cache expires, a **Compact** chip with the thread's token count shows
+next to the send button. While it is on, Enter summarizes the history first, then
+sends your message. Click the chip to switch it to **Full** and keep the full
+history for that message. The cache lasts about an hour on a Claude
+subscription and 5 minutes with an API key, Bedrock, or Vertex. See [commands and skills](./composer.md#commands-and-skills) for using
+composer commands.
 
 ## Usage limits
 

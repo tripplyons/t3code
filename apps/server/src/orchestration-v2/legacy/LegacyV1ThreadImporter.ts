@@ -1,4 +1,3 @@
-import { ThreadGoal } from "@t3tools/contracts";
 import {
   threadPullRequestKeysEqual,
   threadPullRequestsOf,
@@ -22,23 +21,22 @@ import {
   ThreadPullRequestLink,
   TurnItemId,
 } from "@t3tools/contracts";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as EventSink from "../EventSink.ts";
-import { makeKeyedSerialExecutor } from "../KeyedSerialExecutor.ts";
-import { randomUuidV4 } from "../RandomUuid.ts";
+import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 
 const IMPORT_EVENT_PREFIX = "migration:v1";
 const TRANSCRIPT_EVENT_BATCH_SIZE = 100;
 
 interface LegacyThreadRow {
-  readonly goal_json: string | null;
   readonly thread_id: string;
   readonly project_id: string;
   readonly title: string;
@@ -208,10 +206,6 @@ function importedThread(row: LegacyThreadRow): OrchestrationV2AppThread {
     createdBy: "system",
     creationSource: "server",
     id: threadId,
-    goal:
-      row.goal_json === null
-        ? null
-        : Schema.decodeUnknownSync(Schema.fromJsonString(ThreadGoal))(row.goal_json),
     projectId: ProjectId.make(row.project_id),
     title: row.title.trim() === "" ? "Untitled thread" : row.title,
     providerInstanceId: modelSelection.instanceId,
@@ -352,14 +346,8 @@ function chunks<A>(items: ReadonlyArray<A>, size: number): Array<ReadonlyArray<A
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const legacyColumns = yield* sql<{
-    readonly name: string;
-  }>`PRAGMA table_info(projection_threads)`.pipe(Effect.orDie);
-  const legacyGoalColumn = sql.literal(
-    legacyColumns.some((column) => column.name === "goal_json") ? "thread.goal_json" : "NULL",
-  );
   const eventSink = yield* EventSink.EventSinkV2;
-  const transcriptImports = yield* makeKeyedSerialExecutor<ThreadId>();
+  const transcriptImports = yield* KeyedLock.make<ThreadId>();
 
   const listMessages = (threadId: ThreadId) =>
     sql<LegacyMessageRow>`
@@ -473,7 +461,6 @@ const make = Effect.gen(function* () {
         thread.snoozed_until,
         thread.snoozed_at,
         thread.pinned_at,
-        ${legacyGoalColumn} AS goal_json,
         thread.auto_settle_disabled_at,
         thread.pin_order_key,
         (SELECT json_group_array(json_object('host', pr.host, 'repository', pr.repository, 'number', pr.number, 'url', pr.url, 'source', pr.source, 'linkedAt', pr.linked_at, 'snapshot', json(pr.snapshot_json), 'stack', json(pr.stack_json))) FROM projection_thread_pull_requests pr WHERE pr.thread_id = thread.thread_id) AS pull_requests_json,
@@ -578,7 +565,6 @@ const make = Effect.gen(function* () {
         thread.snoozed_until,
         thread.snoozed_at,
         thread.pinned_at,
-        ${legacyGoalColumn} AS goal_json,
         thread.auto_settle_disabled_at,
         thread.pin_order_key,
         (SELECT json_group_array(json_object('host', pr.host, 'repository', pr.repository, 'number', pr.number, 'url', pr.url, 'source', pr.source, 'linkedAt', pr.linked_at, 'snapshot', json(pr.snapshot_json), 'stack', json(pr.stack_json))) FROM projection_thread_pull_requests pr WHERE pr.thread_id = thread.thread_id) AS pull_requests_json,

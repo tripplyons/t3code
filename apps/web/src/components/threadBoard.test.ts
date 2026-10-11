@@ -72,6 +72,7 @@ function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSum
     settledAt: null,
     settledOverride: null,
     runtime: null,
+    goal: null,
     providerInstanceId: ProviderInstanceId.make("codex"),
     lineage: {
       parentThreadId: null,
