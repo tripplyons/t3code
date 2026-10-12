@@ -4,6 +4,7 @@ import {
   CheckpointId,
   EnvironmentId,
   NodeId,
+  OrchestrationV2TurnItem,
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
@@ -59,6 +60,7 @@ const layerTest = Layer.mergeAll(
 
 const decodeJsonLine = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJsonLine = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeTurnItem = Schema.decodeEffect(OrchestrationV2TurnItem);
 
 const PI_INSTANCE_ID = ProviderInstanceId.make("pi");
 const THREAD_ID = ThreadId.make("thread-pi-test");
@@ -3156,12 +3158,17 @@ describe("PiAdapterV2", () => {
         );
         if (event.type !== "turn_item.updated" || event.turnItem.type !== "user_input_request")
           return;
+        yield* decodeTurnItem(event.turnItem);
         assert.deepEqual(event.turnItem.questions, [
           {
             id,
             header: "Ask user",
             question: testCase.question,
-            options: testCase.choices.map((value) => ({ label: value, description: "", value })),
+            options: testCase.choices.map((value) => ({
+              label: value,
+              description: "Suggested answer",
+              value,
+            })),
           },
         ]);
         yield* runtime.respondToRuntimeRequest({

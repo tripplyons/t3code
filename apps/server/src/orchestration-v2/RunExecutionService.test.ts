@@ -3772,6 +3772,40 @@ it.effect("refreshes pull requests after a provider stream exits with an error",
   }),
 );
 
+it.effect("stops the provider turn when its events can no longer be ingested", () =>
+  Effect.gen(function* () {
+    const key = "ingest-failure";
+    const { observed, committedEffects } = yield* captureRootRunTermination({
+      key,
+      shouldFinalizeRun: () => Effect.succeed(true),
+      // A question the projection rejects must not leave the provider
+      // working on a turn that nothing ingests.
+      events: (ids) =>
+        Stream.concat(Stream.make(rootTerminalEvent(ids, "completed")), Stream.never),
+      ingestNormalized: (event) =>
+        Effect.fail(
+          new ProviderEventIngestor.ProviderEventNormalizeError({
+            providerSessionId: event.providerSessionId,
+            threadId: event.threadId,
+            providerEvent: event.event,
+            cause: "Expected a non-blank string",
+          }),
+        ),
+    });
+    const ids = backgroundScenarioIds(key);
+    assert.equal(observed[0], "run:failed");
+    assert.deepInclude(
+      committedEffects.map((effect) => effect.request),
+      {
+        type: "provider-turn.interrupt",
+        providerSessionId: ProviderSessionId.make(`session:${key}`),
+        providerThreadId: ids.providerThreadId,
+        providerTurnId: ids.rootProviderTurnId,
+      },
+    );
+  }),
+);
+
 it.effect("refreshes pull requests only once when startup failure closes its event stream", () =>
   Effect.gen(function* () {
     const ingestionStarted = yield* Deferred.make<void>();
@@ -3828,6 +3862,7 @@ function captureRootRunTermination(input: {
   >;
   readonly startTurn?: ProviderAdapter.ProviderAdapterV2SessionRuntime["startTurn"];
   readonly refreshAfterTurn?: Effect.Effect<void>;
+  readonly ingestNormalized?: ProviderEventIngestor.ProviderEventIngestorV2["Service"]["ingestNormalized"];
 }) {
   return Effect.gen(function* () {
     const ids = backgroundScenarioIds(input.key);
@@ -3893,7 +3928,7 @@ function captureRootRunTermination(input: {
           }),
           IdAllocator.layer,
           Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
-            ingestNormalized: () => Effect.succeed([]),
+            ingestNormalized: input.ingestNormalized ?? (() => Effect.succeed([])),
           }),
           ServerSettings.layerTest(),
           Layer.succeed(RunFinalizationService.RunFinalizationObserver, {

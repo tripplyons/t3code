@@ -592,6 +592,16 @@ export const layer: Layer.Layer<
       readonly terminal: ProviderTerminalEvent;
       readonly failureItemPersisted: boolean;
       readonly refreshAfterTurn: Effect.Effect<void>;
+      /**
+       * Stops a provider turn whose events nothing ingests anymore, the same
+       * way Stop does. Otherwise it keeps working unseen, its open items keep
+       * the thread looking busy, and adapters that allow one active turn
+       * reject the next message.
+       */
+      readonly interruptProviderTurn?: {
+        readonly providerSessionId: ProviderSessionId;
+        readonly providerTurnId: ProviderTurnId;
+      };
       readonly writeIfRunCurrent?: {
         readonly activeAttemptId: RunAttemptId;
         readonly expectedStatus: OrchestrationV2Run["status"];
@@ -692,8 +702,8 @@ export const layer: Layer.Layer<
         // the next message. The capture is enqueued with these terminal events,
         // ahead of any later run's start on this thread's effect lane.
         const finalization = {
-          effects:
-            input.terminal.status === "completed" ||
+          effects: [
+            ...(input.terminal.status === "completed" ||
             input.terminal.status === "interrupted" ||
             input.terminal.status === "cancelled"
               ? [
@@ -708,7 +718,25 @@ export const layer: Layer.Layer<
                     },
                   },
                 ]
-              : [],
+              : []),
+            ...(input.interruptProviderTurn === undefined
+              ? []
+              : [
+                  {
+                    id: `effect:provider-turn.interrupt:${input.attempt.id}`,
+                    commandId: CommandId.make(
+                      `command:effect:provider-turn.interrupt:${input.attempt.id}`,
+                    ),
+                    threadId: input.run.threadId,
+                    request: {
+                      type: "provider-turn.interrupt" as const,
+                      providerSessionId: input.interruptProviderTurn.providerSessionId,
+                      providerThreadId: input.providerThread.id,
+                      providerTurnId: input.interruptProviderTurn.providerTurnId,
+                    },
+                  },
+                ]),
+          ],
           events: [
             // Terminalize open run-owned subagent rows before the root run
             // settles so projections never keep a forever-running subagent card.
@@ -1331,41 +1359,40 @@ export const layer: Layer.Layer<
                     Effect.andThen(
                       finalized
                         ? Effect.void
-                        : Ref.get(latestProviderThread).pipe(
-                            Effect.flatMap((providerThread) =>
-                              Ref.get(latestTurnItemOrdinal).pipe(
-                                Effect.flatMap((latestItemOrdinal) =>
-                                  Ref.get(openRunOwnedSubagents).pipe(
-                                    Effect.flatMap((openSubagents) =>
-                                      writeFinalRunEvents({
-                                        run: input.run,
-                                        rootNode: input.rootNode,
-                                        checkpointScope: input.checkpointScope,
-                                        providerThread,
-                                        attempt: input.attempt,
-                                        // The failure may be the ownership
-                                        // read itself, so check in the write.
-                                        writeIfRunCurrent: {
-                                          activeAttemptId: input.attempt.id,
-                                          expectedStatus: "running",
-                                        },
-                                        openRunOwnedSubagents: openSubagents,
-                                        terminal: makeFailedTerminalEvent(
-                                          makeProviderFailure({
-                                            cause: Cause.squash(cause),
-                                            class: "unknown",
-                                          }),
-                                          latestItemOrdinal + 1,
-                                        ),
-                                        failureItemPersisted: false,
-                                        refreshAfterTurn,
-                                      }),
-                                    ),
-                                  ),
-                                ),
+                        : Effect.gen(function* () {
+                            const { rootProviderTurnId } = yield* Ref.get(eventRouting);
+                            yield* writeFinalRunEvents({
+                              run: input.run,
+                              rootNode: input.rootNode,
+                              checkpointScope: input.checkpointScope,
+                              providerThread: yield* Ref.get(latestProviderThread),
+                              attempt: input.attempt,
+                              // The failure may be the ownership read itself,
+                              // so check in the write.
+                              writeIfRunCurrent: {
+                                activeAttemptId: input.attempt.id,
+                                expectedStatus: "running",
+                              },
+                              openRunOwnedSubagents: yield* Ref.get(openRunOwnedSubagents),
+                              terminal: makeFailedTerminalEvent(
+                                makeProviderFailure({
+                                  cause: Cause.squash(cause),
+                                  class: "unknown",
+                                }),
+                                (yield* Ref.get(latestTurnItemOrdinal)) + 1,
                               ),
-                            ),
-                          ),
+                              failureItemPersisted: false,
+                              refreshAfterTurn,
+                              ...(rootProviderTurnId === null
+                                ? {}
+                                : {
+                                    interruptProviderTurn: {
+                                      providerSessionId: input.providerSessionId,
+                                      providerTurnId: rootProviderTurnId,
+                                    },
+                                  }),
+                            });
+                          }),
                     ),
                     Effect.mapError(
                       (writeCause) =>

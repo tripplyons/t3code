@@ -3405,7 +3405,7 @@ function piQuestion(
       options: validSuggestions
         ? suggestions.map((suggestion, index) => {
             const value = suggestion.slice(`${index + 1}. `.length);
-            return { label: value, description: "", value };
+            return { label: value.trim() || "Empty value", description: "Suggested answer", value };
           })
         : [],
     };
@@ -3414,7 +3414,11 @@ function piQuestion(
     method === "select" && Array.isArray(event["options"])
       ? event["options"]
           .filter((option): option is string => typeof option === "string")
-          .map((option) => ({ label: option || "Empty value", description: option, value: option }))
+          .map((option) => ({
+            label: option.trim() || "Empty value",
+            description: option.trim() || "Select an empty value",
+            value: option,
+          }))
       : method === "editor"
         ? []
         : [
