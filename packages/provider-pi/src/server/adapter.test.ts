@@ -3107,6 +3107,74 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect("normalizes ask_user questions and returns suggestion or custom answers exactly", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent } = yield* openRuntime(fake);
+      yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      const question = "Which settings?\nKeep the current values?";
+      const choices = ["Pi defaults", "全て", "Custom | settings"];
+      const cases = [
+        {
+          title: `${question}\n\nSuggestions:\n${choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`,
+          question,
+          choices,
+          answer: choices[1],
+        },
+        {
+          title: `${question}\n\nSuggestions:\n${choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`,
+          question,
+          choices,
+          answer: "  My own answer\nwith details  ",
+        },
+        { title: question, question, choices: [], answer: "Free text" },
+        {
+          title: "Keep this text\n\nSuggestions:\n1. One\n3. Not a valid list",
+          question: "Keep this text\n\nSuggestions:\n1. One\n3. Not a valid list",
+          choices: [],
+          answer: "No",
+        },
+      ];
+      for (const [index, testCase] of cases.entries()) {
+        const id = `ask-user-${index}`;
+        yield* fake.emit({
+          type: "extension_ui_request",
+          id,
+          method: "input",
+          title: testCase.title,
+          placeholder: "Free-text answer",
+        });
+        const event = yield* takeEvent(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "user_input_request" &&
+            event.turnItem.questions.some((question) => question.id === id),
+        );
+        if (event.type !== "turn_item.updated" || event.turnItem.type !== "user_input_request")
+          return;
+        assert.deepEqual(event.turnItem.questions, [
+          {
+            id,
+            header: "Ask user",
+            question: testCase.question,
+            options: testCase.choices.map((value) => ({ label: value, description: "", value })),
+          },
+        ]);
+        yield* runtime.respondToRuntimeRequest({
+          requestId: event.turnItem.requestId,
+          answers: { [id]: testCase.answer },
+        });
+        const response = yield* fake.takeRequest("extension_ui_response");
+        assert.equal(response["value"], testCase.answer);
+        assert.isUndefined(response["cancelled"]);
+      }
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("keeps the complete editor prefill editable and returns exact edited text", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

@@ -3379,6 +3379,37 @@ function piQuestion(
   title: string,
   event: PiRpcRecord,
 ): OrchestrationV2UserInputQuestion {
+  // The ask_user extension encodes suggestions in an input dialog's title,
+  // not in RPC options. Keep this compatibility rule at the Pi boundary so
+  // every client receives the same question and answer values.
+  if (
+    method === "input" &&
+    event["placeholder"] === "Free-text answer" &&
+    event["message"] === undefined
+  ) {
+    const separator = "\n\nSuggestions:\n";
+    const separatorIndex = title.lastIndexOf(separator);
+    const suggestions =
+      separatorIndex < 0 ? [] : title.slice(separatorIndex + separator.length).split("\n");
+    const validSuggestions =
+      suggestions.length > 0 &&
+      suggestions.length <= 8 &&
+      suggestions.every(
+        (suggestion, index) =>
+          suggestion.startsWith(`${index + 1}. `) && suggestion.length > `${index + 1}. `.length,
+      );
+    return {
+      id: questionId,
+      header: "Ask user",
+      question: validSuggestions ? title.slice(0, separatorIndex) : title,
+      options: validSuggestions
+        ? suggestions.map((suggestion, index) => {
+            const value = suggestion.slice(`${index + 1}. `.length);
+            return { label: value, description: "", value };
+          })
+        : [],
+    };
+  }
   const options =
     method === "select" && Array.isArray(event["options"])
       ? event["options"]
