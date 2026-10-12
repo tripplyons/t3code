@@ -6,8 +6,11 @@ import * as NodeModule from "node:module";
 import * as NodeVM from "node:vm";
 import { assert, describe, expect, it } from "@effect/vitest";
 
-import { PI_T3_MCP_EXTENSION_SOURCE } from "./mcpExtensionSource.ts";
-import { loadMcpBridge } from "./mcpBridge.testkit.ts";
+import {
+  PI_BACKGROUND_TASKS_STATUS_KEY,
+  PI_T3_MCP_EXTENSION_SOURCE,
+} from "./mcpExtensionSource.ts";
+import { loadMcpBridge, testEventBus } from "./mcpBridge.testkit.ts";
 
 type RequestHook = (
   event: { payload: unknown },
@@ -25,7 +28,7 @@ type InputHook = (
   ctx: { ui: { notify: (message: string, level: string) => void } },
 ) => Promise<{ action: string; text: string; images?: ReadonlyArray<unknown> } | undefined>;
 
-async function loadHooks(commands: ReadonlyArray<SkillCommand> = []) {
+async function loadHooks(commands: ReadonlyArray<SkillCommand> = [], events = testEventBus()) {
   const handlers = new Map<string, unknown>();
   // Execute the shipped extension with MCP disabled; this path needs no Typebox.
   const source = NodeModule.stripTypeScriptTypes(
@@ -41,12 +44,66 @@ async function loadHooks(commands: ReadonlyArray<SkillCommand> = []) {
     // Frontmatter parsing belongs to Pi. These fixtures contain only skill bodies.
     stripFrontmatter: (content: string) => content,
     pi: {
-      on: (name: string, handler: unknown) => handlers.set(name, handler),
+      events,
+      on: (name: string, handler: unknown) => {
+        const previous = handlers.get(name);
+        if (previous === undefined) handlers.set(name, handler);
+        else
+          handlers.set(name, async (event: unknown, ctx: unknown) => {
+            await (previous as (event: unknown, ctx: unknown) => unknown)(event, ctx);
+            return await (handler as (event: unknown, ctx: unknown) => unknown)(event, ctx);
+          });
+      },
       getCommands: () => commands,
     },
   });
   return handlers;
 }
+
+describe("Pi background task bridge", () => {
+  it("requests a roster and reports it as a status only in RPC mode, then detaches on shutdown", async () => {
+    const events = testEventBus();
+    const statuses: Array<{ readonly key: string; readonly text: string | undefined }> = [];
+    const ui = {
+      notify: () => {},
+      setStatus: (key: string, text: string | undefined) => statuses.push({ key, text }),
+    };
+    const snapshot = {
+      sessionFile: "/test/session.jsonl",
+      tasks: [{ taskId: "job", kind: "command", description: "build" }],
+    };
+    const publishTasks = (tasks = snapshot.tasks) =>
+      events.emit("t3:background-tasks", { ...snapshot, source: "tasks", tasks });
+    events.on("t3:background-tasks-request", () => publishTasks());
+    const hooks = await loadHooks([], events);
+    const start = hooks.get("session_start") as (
+      event: unknown,
+      ctx: { mode: string; ui: typeof ui },
+    ) => Promise<void>;
+    const shutdown = hooks.get("session_shutdown") as () => void;
+    await start({}, { mode: "tui", ui });
+    publishTasks();
+    assert.deepEqual(statuses, []);
+    await start({}, { mode: "rpc", ui });
+    const swarm = { taskId: "worker", kind: "subagent", description: "Worker" };
+    events.emit("t3:background-tasks", { ...snapshot, source: "swarm", tasks: [swarm] });
+    publishTasks([]);
+    events.emit("t3:background-tasks", { ...snapshot, source: "swarm", tasks: [] });
+    assert.isTrue(statuses.every((status) => status.key === PI_BACKGROUND_TASKS_STATUS_KEY));
+    assert.deepEqual(
+      statuses.map((status) => JSON.parse(status.text ?? "")),
+      [
+        snapshot,
+        { ...snapshot, tasks: [...snapshot.tasks, swarm] },
+        { ...snapshot, tasks: [swarm] },
+        { ...snapshot, tasks: [] },
+      ],
+    );
+    shutdown();
+    publishTasks();
+    assert.equal(statuses.length, 4);
+  });
+});
 
 describe("Pi MCP tool results", () => {
   it("returns mixed screenshot blocks and typed script output without repeating structured text", async () => {
@@ -317,6 +374,7 @@ describe("Pi tool discovery permissions", () => {
     await NodeVM.runInNewContext(`${source}\nt3McpExtension(pi)`, {
       process: { env: { T3_PI_RUNTIME_MODE: "approval-required" } },
       pi: {
+        events: testEventBus(),
         on: (name: string, handler: ToolCallHook) => {
           if (name === "tool_call") toolCall = handler;
         },
@@ -363,7 +421,10 @@ async function loadRequestHook(): Promise<RequestHook> {
   );
   await NodeVM.runInNewContext(`${source}\nt3McpExtension(pi)`, {
     process: { env: {} },
-    pi: { on: (name: string, handler: RequestHook) => handlers.set(name, handler) },
+    pi: {
+      events: testEventBus(),
+      on: (name: string, handler: RequestHook) => handlers.set(name, handler),
+    },
   });
   const hook = handlers.get("before_provider_request");
   assert.isDefined(hook);

@@ -23,6 +23,9 @@ export const T3_PI_MCP_EXTENSION_PATH_ENV = "T3_PI_MCP_EXTENSION_PATH";
  */
 export const PI_FILE_CHANGE_TOOLS = ["edit", "write"] as const;
 
+/** Pi status key that carries the bridge's background roster as JSON. */
+export const PI_BACKGROUND_TASKS_STATUS_KEY = "t3.background-tasks";
+
 export const PI_T3_MCP_EXTENSION_SOURCE = `\
 import { stripFrontmatter, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as NodeFSP from "node:fs/promises";
@@ -247,6 +250,34 @@ function createMcpClient(endpoint: string, token: string) {
 }
 
 export default async function t3McpExtension(pi: ExtensionAPI) {
+  // Optional task extensions publish full native-session rosters on Pi's event bus.
+  // RPC mode redirects process.stdout to stderr, so the roster travels as a
+  // reserved status update. Never send it to the terminal UI.
+  let rpcUi: { setStatus: (key: string, text: string | undefined) => void } | undefined;
+  const backgroundSources = new Map<string, Map<string, unknown[]>>();
+  const publishedBackground = new Map<string, string>();
+  const detachBackground = pi.events.on("t3:background-tasks", (snapshot) => {
+    if (!rpcUi || typeof snapshot !== "object" || snapshot === null) return;
+    const value = snapshot as { sessionFile?: unknown; source?: unknown; tasks?: unknown };
+    if (typeof value.sessionFile !== "string" || typeof value.source !== "string" || !Array.isArray(value.tasks)) return;
+    let sources = backgroundSources.get(value.sessionFile);
+    if (!sources) { sources = new Map(); backgroundSources.set(value.sessionFile, sources); }
+    sources.set(value.source, value.tasks);
+    // One producer completing must not clear another producer's live work.
+    const record = JSON.stringify({
+      sessionFile: value.sessionFile,
+      tasks: [...sources.values()].flat(),
+    });
+    if (publishedBackground.get(value.sessionFile) === record) return;
+    publishedBackground.set(value.sessionFile, record);
+    rpcUi.setStatus(${JSON.stringify(PI_BACKGROUND_TASKS_STATUS_KEY)}, record);
+  });
+  pi.on("session_start", (_event, ctx) => {
+    rpcUi = ctx.mode === "rpc" ? ctx.ui : undefined;
+    if (rpcUi) pi.events.emit("t3:background-tasks-request", undefined);
+  });
+  pi.on("session_shutdown", () => { rpcUi = undefined; detachBackground(); });
+
   // Keep skill chips in the request. Pi expands only one leading /skill:
   // command, so use its own frontmatter loader for every selected chip here.
   pi.on("input", async (event, ctx) => {

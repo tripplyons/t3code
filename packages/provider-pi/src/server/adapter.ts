@@ -96,10 +96,28 @@ import {
   materializePiT3McpExtension,
   resolvePiLaunchArgs,
 } from "./mcpInjection.ts";
-import { PI_FILE_CHANGE_TOOLS } from "./mcpExtensionSource.ts";
+import { PI_BACKGROUND_TASKS_STATUS_KEY, PI_FILE_CHANGE_TOOLS } from "./mcpExtensionSource.ts";
 
 export const PI_PROVIDER = ProviderDriverKind.make("pi");
 const PI_DRIVER_KIND = PI_PROVIDER;
+
+// The T3 bridge reports native-session background rosters as a reserved status.
+const decodeBackgroundStatus = Schema.decodeUnknownOption(
+  Schema.Struct({
+    statusText: Schema.fromJsonString(
+      Schema.Struct({
+        sessionFile: Schema.String,
+        tasks: Schema.Array(
+          Schema.Struct({
+            taskId: Schema.String.check(Schema.isMinLength(1)),
+            kind: Schema.Literals(["command", "subagent"]),
+            description: Schema.String,
+          }),
+        ),
+      }),
+    ),
+  }),
+);
 const PI_DEFAULT_INSTANCE_ID = defaultInstanceIdForDriver(PI_DRIVER_KIND);
 const DEFAULT_PI_SETTINGS = Schema.decodeSync(PiSettings)({});
 
@@ -595,6 +613,11 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       // dialog's own resolution updates.
       const sessionEventPermit = yield* Semaphore.make(1);
       let threadState: PiThreadState | null = null;
+      // Startup and session-switch snapshots can arrive before the app binding exists.
+      const backgroundRosters = new Map<
+        string,
+        OrchestrationV2ProviderThread["pendingBackgroundTasks"]
+      >();
       let registrationAttempted = false;
       let lastNativeThreadId: string | null = null;
       // User Stop intentionally tears down this RPC process after aborting.
@@ -1763,6 +1786,21 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       });
 
       const handleSessionEvent = Effect.fnUntraced(function* (event: PiRpcRecord) {
+        if (
+          event["type"] === "extension_ui_request" &&
+          event["method"] === "setStatus" &&
+          event["statusKey"] === PI_BACKGROUND_TASKS_STATUS_KEY
+        ) {
+          const status = decodeBackgroundStatus(event);
+          if (Option.isNone(status)) return;
+          const { sessionFile, tasks } = status.value.statusText;
+          backgroundRosters.set(sessionFile, tasks);
+          const state = threadState;
+          if (state?.providerThread.nativeThreadRef?.nativeId === sessionFile) {
+            yield* updateProviderThread(state, { pendingBackgroundTasks: tasks });
+          }
+          return;
+        }
         // Model-selection hooks can await a dialog before startTurn can claim
         // a wake. Keep interactive requests session-scoped until a turn owns
         // them; buffer native output and notifications for that turn.
@@ -2250,6 +2288,13 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                   protocolError("Pi transport closed during rollback"),
                 );
               pendingWake = null;
+              backgroundRosters.clear();
+              if (
+                state !== null &&
+                (state.providerThread.pendingBackgroundTasks?.length ?? 0) > 0
+              ) {
+                yield* updateProviderThread(state, { pendingBackgroundTasks: [] });
+              }
               const interrupted = state?.activeTurn?.interrupted === true;
               if (state?.activeTurn != null) {
                 state.activeTurn.failure = interrupted
@@ -2383,6 +2428,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 nativeThreadRef: providerRef(nativeId),
                 ...(needsNewSession ? { nativeConversationHeadRef: null, contextUsage: null } : {}),
                 status: "idle",
+                pendingBackgroundTasks: backgroundRosters.get(nativeId) ?? [],
                 updatedAt: createdAt,
               }
             : {
@@ -2402,7 +2448,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 lastRunOrdinal: null,
                 handoffIds: [],
                 forkedFrom: null,
-                pendingBackgroundTasks: [],
+                pendingBackgroundTasks: backgroundRosters.get(nativeId) ?? [],
                 createdAt,
                 updatedAt: createdAt,
               };
@@ -2519,10 +2565,17 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           return sessionEntity;
         },
         events: Stream.fromQueue(events),
-        hasPendingBackgroundWork: Effect.sync(() => pendingWake !== null),
+        hasPendingBackgroundWork: Effect.sync(
+          () =>
+            pendingWake !== null ||
+            (threadState?.providerThread.pendingBackgroundTasks?.length ?? 0) > 0,
+        ),
         hasPendingBackgroundWorkForThread: (providerThread) =>
           Effect.sync(
-            () => pendingWake !== null && pendingWake.state.providerThread.id === providerThread.id,
+            () =>
+              (pendingWake !== null && pendingWake.state.providerThread.id === providerThread.id) ||
+              (backgroundRosters.get(providerThread.nativeThreadRef?.nativeId ?? "")?.length ?? 0) >
+                0,
           ),
         getModelContextWindow: (selection) => {
           if (selection.instanceId !== options.instanceId) return undefined;
@@ -2687,7 +2740,11 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 return yield* protocolError("Pi native wake belongs to a different app thread");
               }
               pendingWake = null;
-              state.providerThread = turnInput.providerThread;
+              state.providerThread = {
+                ...turnInput.providerThread,
+                pendingBackgroundTasks:
+                  backgroundRosters.get(state.providerThread.nativeThreadRef?.nativeId ?? "") ?? [],
+              };
               state.activeTurn = activeTurn;
               activeTurn.adoptedWake = wake !== null && !continuation;
               if (compactCommand !== null) {

@@ -49,6 +49,7 @@ import {
 } from "./adapter.ts";
 import { makePiRpcConnection, type PiRpcRecord } from "./rpc.ts";
 import { loadMcpBridge } from "./mcpBridge.testkit.ts";
+import { PI_BACKGROUND_TASKS_STATUS_KEY } from "./mcpExtensionSource.ts";
 import { turnItemOutputText } from "../../../client-runtime/src/work-log/itemDetail.ts";
 
 const layerTest = Layer.mergeAll(
@@ -489,7 +490,86 @@ const expectModelFailure = (errorMessage: string) =>
     );
   }).pipe(Effect.scoped, Effect.provide(layerTest));
 
+// Pi's RPC writer for ctx.ui.setStatus, as used by the T3 bridge.
+const backgroundStatus = (sessionFile: string, tasks: ReadonlyArray<unknown>) => ({
+  type: "extension_ui_request",
+  id: `status:${sessionFile}:${tasks.length}`,
+  method: "setStatus",
+  statusKey: PI_BACKGROUND_TASKS_STATUS_KEY,
+  statusText: JSON.stringify({ sessionFile, tasks }),
+});
+
 describe("PiAdapterV2", () => {
+  it.effect(
+    "retains startup task snapshots until thread binding and clears them on transport death",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakePi;
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        const tasks = [{ taskId: "restored", kind: "command", description: "build" }] as const;
+        yield* fake.emit(backgroundStatus(FAKE_SESSION_FILE, tasks));
+        const providerThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        assert.deepEqual(providerThread.pendingBackgroundTasks, tasks);
+        assert.isTrue(yield* runtime.hasPendingBackgroundWork!);
+        yield* takeEvent(
+          (event) =>
+            event.type === "provider_thread.updated" &&
+            event.providerThread.pendingBackgroundTasks?.length === 1,
+        );
+        yield* fake.closeStdout;
+        yield* takeEvent(
+          (event) =>
+            event.type === "provider_thread.updated" &&
+            event.providerThread.pendingBackgroundTasks?.length === 0,
+        );
+        assert.isFalse(yield* runtime.hasPendingBackgroundWork!);
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
+  it.effect("tracks background rosters after settle and clears them without a new turn", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime, takeEvent } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      yield* fake.emit({ type: "agent_start" });
+      const tasks = [{ taskId: "job-1", kind: "command", description: "npm run build" }] as const;
+      yield* fake.emit(backgroundStatus(FAKE_SESSION_FILE, tasks));
+      const roster = yield* takeEvent(
+        (event) =>
+          event.type === "provider_thread.updated" &&
+          event.providerThread.pendingBackgroundTasks?.length === 1,
+      );
+      assert.isTrue(roster.type === "provider_thread.updated");
+      if (roster.type === "provider_thread.updated")
+        assert.deepEqual(roster.providerThread.pendingBackgroundTasks, tasks);
+      yield* fake.emit({ type: "agent_settled" });
+      yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(yield* runtime.hasPendingBackgroundWork!);
+      assert.isTrue(yield* runtime.hasPendingBackgroundWorkForThread!(providerThread));
+      // Invalid records and another native session must not clear the current roster.
+      yield* fake.emit(backgroundStatus(FAKE_SESSION_FILE, [{}]));
+      yield* fake.emit(backgroundStatus("/other/session.jsonl", []));
+      yield* fake.emit(backgroundStatus(FAKE_SESSION_FILE, []));
+      yield* takeEvent(
+        (event) =>
+          event.type === "provider_thread.updated" &&
+          event.providerThread.pendingBackgroundTasks?.length === 0,
+      );
+      assert.isFalse(yield* runtime.hasPendingBackgroundWork!);
+      assert.isFalse(yield* runtime.hasPendingBackgroundWorkForThread!(providerThread));
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect.each([false, true])(
     "serializes rollback fork hooks with native wake ownership, wake=%s",
     (nativeWake) =>

@@ -1,5 +1,21 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Executes the shipped Pi extension at its native JavaScript boundary.
 import * as NodeModule from "node:module";
+import * as NodeEvents from "node:events";
+
+export function testEventBus() {
+  const emitter = new NodeEvents.EventEmitter();
+  return {
+    emit: (channel: string, data: unknown) => {
+      emitter.emit(channel, data);
+    },
+    on: (channel: string, handler: (data: unknown) => void) => {
+      emitter.on(channel, handler);
+      return () => {
+        emitter.off(channel, handler);
+      };
+    },
+  };
+}
 import * as NodePath from "node:path";
 import * as NodeVM from "node:vm";
 import { PI_T3_MCP_EXTENSION_SOURCE } from "./mcpExtensionSource.ts";
@@ -117,6 +133,7 @@ export async function loadMcpBridge(
       });
     },
     pi: {
+      events: testEventBus(),
       on: (name: string, handler: AgentStartHook) => handlers.set(name, handler),
       registerTool: (tool: RegisteredTool) => {
         if (options.allowsTool && !options.allowsTool(tool.name)) return;
