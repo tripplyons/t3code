@@ -521,7 +521,6 @@ describe("presentPendingBackgroundWork", () => {
     expect(presentation).toEqual({
       title: "Waiting on subagent Luna Window Properties",
       items: [{ taskId: "luna", kind: "subagent", label: "Luna Window Properties", childThreadId }],
-      waiting: true,
     });
   });
 
@@ -552,29 +551,21 @@ describe("presentPendingBackgroundWork", () => {
     expect(presentPendingBackgroundWork([])).toBeNull();
   });
 
-  // A command left running, such as a dev server, does not wake the agent.
-  it("says only commands are running, not waited on", () => {
+  it("waits on background commands like other work", () => {
     expect(
       presentPendingBackgroundWork([
         { taskId: "dev", kind: "command", description: "Start the shared dev server" },
-      ]),
-    ).toMatchObject({ title: "Running: Start the shared dev server", waiting: false });
-    expect(presentPendingBackgroundWork([{ taskId: "a", kind: "command" }])).toMatchObject({
-      title: "Running a command",
-      waiting: false,
-    });
-    expect(
-      presentPendingBackgroundWork([
-        { taskId: "a", kind: "command", description: "vp run dev" },
-        { taskId: "b", kind: "command", description: "tailscale serve" },
-      ]),
-    ).toMatchObject({ title: "Running 2 commands", waiting: false });
+      ])?.title,
+    ).toBe("Waiting on command Start the shared dev server");
+    expect(presentPendingBackgroundWork([{ taskId: "a", kind: "command" }])?.title).toBe(
+      "Waiting on a command",
+    );
     expect(
       presentPendingBackgroundWork([
         { taskId: "a", kind: "command", description: "vp run dev" },
         { taskId: "b", kind: "monitor", description: "Watch PR checks" },
-      ]),
-    ).toMatchObject({ title: "Waiting on 1 command and 1 monitor", waiting: true });
+      ])?.title,
+    ).toBe("Waiting on 1 command and 1 monitor");
   });
 
   it("groups work by kind, subagents first, and keeps each name", () => {

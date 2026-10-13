@@ -27,8 +27,7 @@ describe("backgroundWorkHoldsCompletion", () => {
 
   it.each([
     ["nothing pending", false, []],
-    ["a dev server", false, [task("dev", "command")]],
-    ["two long-lived shells", false, [task("web", "command"), task("api", "command")]],
+    ["a background command", true, [task("dev", "command")]],
     ["a subagent", true, [task("review", "subagent")]],
     ["a monitor", true, [task("watch", "monitor")]],
     ["a command and a monitor", true, [task("dev", "command"), task("watch", "monitor")]],

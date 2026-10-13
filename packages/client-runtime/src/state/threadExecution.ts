@@ -234,8 +234,8 @@ export function deriveThreadRuntime(
   const liveActivityRun = latestMatchingRun(projection, (run) =>
     ACTIVITY_RUN_STATUSES.has(run.status),
   );
-  // Same rule as the shell runtime: only background work that holds the
-  // completion parks the thread at idle; a dev server left running does not.
+  // Same rule as the shell runtime: background work that holds the
+  // completion parks the thread at idle.
   const backgroundWorkHoldsRun = backgroundWorkHoldsCompletion(
     derivePendingBackgroundWork({
       latestRun: latestRunProjection,
@@ -310,17 +310,9 @@ export interface PendingBackgroundWorkItem {
 }
 
 export interface PendingBackgroundWorkPresentation {
-  /**
-   * "Waiting on subagent Review src/math.ts", "Waiting on 2 subagents and 1 command",
-   * or "Running: Start the dev server" when only commands remain.
-   */
+  /** "Waiting on subagent Review src/math.ts" or "Waiting on 2 subagents and 1 command". */
   readonly title: string;
   readonly items: ReadonlyArray<PendingBackgroundWorkItem>;
-  /**
-   * True when the work will wake the agent (subagents, monitors). False when
-   * only commands remain, such as a dev server: the agent is done.
-   */
-  readonly waiting: boolean;
 }
 
 function joinWithAnd(parts: ReadonlyArray<string>): string {
@@ -333,7 +325,6 @@ export function presentPendingBackgroundWork(
   tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>,
 ): PendingBackgroundWorkPresentation | null {
   if (tasks.length === 0) return null;
-  const waiting = backgroundWorkHoldsCompletion(tasks);
   const items = tasks
     .map((task): PendingBackgroundWorkItem => {
       const description = task.description?.trim();
@@ -360,14 +351,10 @@ export function presentPendingBackgroundWork(
   if (items.length === 1 && only !== undefined) {
     const noun = BACKGROUND_WORK_KINDS[only.kind].singular;
     const named = only.label !== noun;
-    const title = waiting
-      ? named
-        ? `${only.kind === "monitor" ? "" : `Waiting on ${noun} `}${only.label}`
-        : `Waiting on a ${noun}`
-      : named
-        ? `Running: ${only.label}`
-        : `Running a ${noun}`;
-    return { title, items, waiting };
+    const title = named
+      ? `${only.kind === "monitor" ? "" : `Waiting on ${noun} `}${only.label}`
+      : `Waiting on a ${noun}`;
+    return { title, items };
   }
   const counts = new Map<BackgroundWorkKind, number>();
   for (const item of items) counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
@@ -375,7 +362,7 @@ export function presentPendingBackgroundWork(
     const { singular, plural } = BACKGROUND_WORK_KINDS[kind];
     return `${count} ${count === 1 ? singular : plural}`;
   });
-  return { title: `${waiting ? "Waiting on" : "Running"} ${joinWithAnd(groups)}`, items, waiting };
+  return { title: `Waiting on ${joinWithAnd(groups)}`, items };
 }
 
 export interface ProviderGoalPresentation {

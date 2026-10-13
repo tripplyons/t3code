@@ -15,14 +15,8 @@ export type FloatingWorkingStatus =
       readonly accessibilityLabel: string;
       readonly onPress: () => void;
     }
-  // The turn settled while background work it started still runs. `waiting`
-  // is false when only commands remain, such as a dev server: the agent is done.
-  | {
-      readonly kind: "background";
-      readonly label: string;
-      readonly accessibilityLabel: string;
-      readonly waiting: boolean;
-    }
+  // The turn settled while background work it started still runs.
+  | { readonly kind: "background"; readonly label: string; readonly accessibilityLabel: string }
   // A native /goal on an idle thread: paused, blocked, complete, or set.
   | { readonly kind: "goal"; readonly label: string; readonly accessibilityLabel: string }
   // A task whose thread the server has not created yet: the worktree may

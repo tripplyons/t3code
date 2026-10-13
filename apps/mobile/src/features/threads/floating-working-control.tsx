@@ -423,10 +423,8 @@ function FloatingStatusLabel(props: {
         className="gap-2"
         onLayout={props.onLayout}
       >
-        {/* A dev server can run for hours after the agent is done, so only work
-            that will wake the agent gets the bolt. */}
         <SymbolView
-          name={props.status.waiting ? { ios: "bolt", android: "bolt" } : "terminal"}
+          name={{ ios: "bolt", android: "bolt" }}
           size={13}
           tintColorClassName="foreground"
           type="monochrome"

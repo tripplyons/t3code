@@ -152,7 +152,7 @@ describe("isAutoSettlementCandidate", () => {
     ).toBe(false);
   });
 
-  it("settles a thread whose only background work is a command left running", () => {
+  it("keeps a thread whose only background work is a running command", () => {
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({
@@ -162,7 +162,7 @@ describe("isAutoSettlementCandidate", () => {
         }),
         NOW_MS,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("keeps snoozed threads parked until they wake early on error or completion", () => {
