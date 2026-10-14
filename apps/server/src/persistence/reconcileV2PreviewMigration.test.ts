@@ -9,7 +9,7 @@ import { migrationManifest, runMigrations } from "./Migrations.ts";
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
-import ThreadActivityPreviewsV2 from "./Migrations/062_ThreadActivityPreviewsV2.ts";
+import ThreadActivityPreviewsV2 from "./Migrations/063_ThreadActivityPreviewsV2.ts";
 
 // The V2 schema is unchanged from the published September 15–16 previews.
 const seedPreview = Effect.gen(function* () {
@@ -43,7 +43,8 @@ describe("V2 preview upgrade", () => {
         [59, "McpAppModelContext"],
         [60, "ThreadSnapshotWindowIndexes"],
         [61, "PullRequestReviewGuides"],
-        [62, "ThreadActivityPreviewsV2"],
+        [62, "ThreadFailureLookupIndex"],
+        [63, "ThreadActivityPreviewsV2"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -128,7 +129,8 @@ describe("V2 preview upgrade", () => {
         [59, "McpAppModelContext"],
         [60, "ThreadSnapshotWindowIndexes"],
         [61, "PullRequestReviewGuides"],
-        [62, "ThreadActivityPreviewsV2"],
+        [62, "ThreadFailureLookupIndex"],
+        [63, "ThreadActivityPreviewsV2"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
@@ -174,7 +176,8 @@ it.effect("upgrades the fork's 54-57 ledger without skipping V2 or losing legacy
       [59, "McpAppModelContext"],
       [60, "ThreadSnapshotWindowIndexes"],
       [61, "PullRequestReviewGuides"],
-      [62, "ThreadActivityPreviewsV2"],
+      [62, "ThreadFailureLookupIndex"],
+      [63, "ThreadActivityPreviewsV2"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     assert.deepStrictEqual(yield* sql`SELECT * FROM fork_upgrade_sentinel`, [
@@ -208,7 +211,30 @@ it.effect("moves the fork's activity preview index off upstream migration 57", (
       [59, "McpAppModelContext"],
       [60, "ThreadSnapshotWindowIndexes"],
       [61, "PullRequestReviewGuides"],
-      [62, "ThreadActivityPreviewsV2"],
+      [62, "ThreadFailureLookupIndex"],
+      [63, "ThreadActivityPreviewsV2"],
+    ]);
+    assert.deepStrictEqual(yield* runMigrations(), []);
+    const history = yield* sql<{
+      readonly migration_id: number;
+      readonly name: string;
+    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
+    assert.deepStrictEqual(
+      history.map((row) => [row.migration_id, row.name] as const),
+      migrationManifest,
+    );
+  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+);
+
+it.effect("moves the fork's activity preview index off upstream migration 62", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* runMigrations({ toMigrationInclusive: 61 });
+    yield* ThreadActivityPreviewsV2;
+    yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (62, 'ThreadActivityPreviewsV2')`;
+    assert.deepStrictEqual(yield* runMigrations(), [
+      [62, "ThreadFailureLookupIndex"],
+      [63, "ThreadActivityPreviewsV2"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     const history = yield* sql<{
