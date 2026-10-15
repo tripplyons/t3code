@@ -111,6 +111,23 @@ describe("resolveThreadListV2SnoozeMenuSelection", () => {
 });
 
 describe("resolveThreadListV2Status", () => {
+  it("shows a ready thread with an active scheduled task as waiting, below failures", () => {
+    const runtime = {
+      status: "completed" as const,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      lastError: null,
+      updatedAt: NOW,
+    };
+    const thread = makeThread({ id: ThreadId.make("monitored"), title: "Monitored", runtime });
+    expect(resolveThreadListV2Status(thread)).toBe("ready");
+    expect(resolveThreadListV2Status(thread, true)).toBe("waiting");
+    expect(
+      resolveThreadListV2Status({ ...thread, runtime: { ...runtime, status: "failed" } }, true),
+    ).toBe("failed");
+  });
+
   it("distinguishes usage limits from ordinary failures and clears the label after recovery", () => {
     const thread = makeThread({
       id: ThreadId.make("limited"),

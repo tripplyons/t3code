@@ -23,6 +23,7 @@ import {
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
@@ -211,7 +212,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
-import { primaryServerKeybindingsAtom } from "../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../state/server";
 import {
   derivePhysicalProjectKey,
   deriveProjectGroupingOverrideKey,
@@ -487,11 +488,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     [canOperatePreview, discoveredPorts, navigateToThread, openPreview, threadRef],
   );
   const isThreadRunning = !threadRuntimeCanArchive(thread.runtime);
+  const hasActiveScheduledTask = useAtomValue(
+    serverEnvironment.threadHasActiveScheduledTask({
+      environmentId: thread.environmentId,
+      threadId: thread.id,
+    }),
+  );
   const threadStatus = resolveThreadStatusPill({
     thread: {
       ...thread,
       lastVisitedAt,
     },
+    hasActiveScheduledTask,
   });
   const linkedPullRequestStatus = useLinkedThreadPullRequest(
     thread.environmentId,
@@ -1282,6 +1290,24 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const sidebarThreadByKeyRef = useRef(sidebarThreadByKey);
   sidebarThreadByKeyRef.current = sidebarThreadByKey;
   const projectThreads = sidebarThreads;
+  const projectEnvironmentIdsKey = JSON.stringify(
+    [...new Set(projectThreads.map((thread) => thread.environmentId))].sort(),
+  );
+  const activeScheduledTaskThreadKeys = useAtomValue(
+    useMemo(() => {
+      const environmentIds = JSON.parse(projectEnvironmentIdsKey) as EnvironmentId[];
+      return Atom.make(
+        (get) =>
+          new Set(
+            environmentIds.flatMap((environmentId) =>
+              get(serverEnvironment.activeScheduledTaskThreadIds(environmentId)).map((threadId) =>
+                scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+              ),
+            ),
+          ),
+      );
+    }, [projectEnvironmentIdsKey]),
+  );
   const projectPreferenceKeys = useMemo(() => projectExpansionPreferenceKeys(project), [project]);
   const projectExpanded = useUiStateStore((state) =>
     resolveProjectExpanded(state.projectExpandedById, projectPreferenceKeys),
@@ -1349,14 +1375,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ]),
     );
     const resolveProjectThreadStatus = (thread: SidebarThreadSummary) => {
-      const lastVisitedAt = lastVisitedAtByThreadKey.get(
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      );
+      const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      const lastVisitedAt = lastVisitedAtByThreadKey.get(threadKey);
       return resolveThreadStatusPill({
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
         },
+        hasActiveScheduledTask: activeScheduledTaskThreadKeys.has(threadKey),
       });
     };
     const visibleProjectThreads = sortThreads(
@@ -1373,7 +1399,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       projectStatus,
       visibleProjectThreads,
     };
-  }, [projectThreads, threadLastVisitedAts, threadSortOrder]);
+  }, [activeScheduledTaskThreadKeys, projectThreads, threadLastVisitedAts, threadSortOrder]);
   const pinnedCollapsedThread = useMemo(() => {
     const activeThreadKey = activeRouteThreadKey ?? undefined;
     if (!activeThreadKey || projectExpanded) {
@@ -1401,14 +1427,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ]),
     );
     const resolveProjectThreadStatus = (thread: SidebarThreadSummary) => {
-      const lastVisitedAt = lastVisitedAtByThreadKey.get(
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      );
+      const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      const lastVisitedAt = lastVisitedAtByThreadKey.get(threadKey);
       return resolveThreadStatusPill({
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
         },
+        hasActiveScheduledTask: activeScheduledTaskThreadKeys.has(threadKey),
       });
     };
     const hasOverflowingThreads = visibleProjectThreads.length > sidebarThreadPreviewCount;
@@ -1440,6 +1466,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       shouldShowThreadPanel: projectExpanded || pinnedCollapsedThread !== null,
     };
   }, [
+    activeScheduledTaskThreadKeys,
     isThreadListExpanded,
     pinnedCollapsedThread,
     projectExpanded,

@@ -1295,6 +1295,21 @@ describe("resolveThreadStatusPill", () => {
     });
   });
 
+  it("shows waiting for a completed thread with an active scheduled task", () => {
+    const completedThread = {
+      ...baseThread,
+      interactionMode: "default" as const,
+      runtime: { ...baseThread.runtime, status: "completed" as const, activeRunId: null },
+    };
+    expect(resolveThreadStatusPill({ thread: completedThread })).toBeNull();
+    expect(
+      resolveThreadStatusPill({ thread: completedThread, hasActiveScheduledTask: true }),
+    ).toMatchObject({ label: "Waiting", pulse: false });
+    expect(
+      resolveThreadStatusPill({ thread: baseThread, hasActiveScheduledTask: true }),
+    ).toMatchObject({ label: "Working" });
+  });
+
   it("keeps an active turn working when background tasks are also present", () => {
     expect(
       resolveThreadStatusPill({

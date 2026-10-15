@@ -441,7 +441,10 @@ export interface ProjectionStoreV2Shape {
     readonly autoResume: boolean;
     readonly snooze: boolean;
   }) => Effect.Effect<ReadonlyArray<ProjectionLimitRecoveryCandidate>, ProjectionStoreV2Error>;
-  /** Every candidate, or only `threadId` when a sweep checks one thread. */
+  /**
+   * Every candidate, or only `threadId` when a sweep checks one thread. The SQL
+   * store also skips threads with an enabled scheduled task bound to them.
+   */
   readonly getSettlementCandidates: (
     threadId?: ThreadId,
   ) => Effect.Effect<ReadonlyArray<ProjectionSettlementCandidate>, ProjectionStoreV2Error>;
@@ -5704,6 +5707,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               AND NOT EXISTS (
                 SELECT 1 FROM orchestration_v2_projection_runtime_requests request
                 WHERE request.thread_id = t.thread_id AND request.status = 'pending'
+              )
+              -- An enabled task bound to the thread, such as an agent's
+              -- monitor, still reports back into it.
+              AND NOT EXISTS (
+                SELECT 1 FROM scheduled_tasks task
+                WHERE task.thread_id = t.thread_id AND task.enabled = 1
               )
             ORDER BY t.updated_at ASC, t.thread_id ASC
           `;

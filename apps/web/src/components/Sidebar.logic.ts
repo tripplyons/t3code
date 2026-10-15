@@ -1179,6 +1179,8 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
 
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
+  /** An enabled scheduled task, such as an agent's monitor, is bound to the thread. */
+  hasActiveScheduledTask?: boolean;
 }): ThreadStatusPill | null {
   const { thread } = input;
 
@@ -1222,7 +1224,10 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) {
+  if (
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
+    input.hasActiveScheduledTask === true
+  ) {
     return {
       label: "Waiting",
       colorClass: "text-sidebar-muted-foreground",

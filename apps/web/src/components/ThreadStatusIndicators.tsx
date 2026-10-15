@@ -39,7 +39,9 @@ import { cn } from "../lib/utils";
 import { revealThreadTerminal } from "../lib/revealThreadTerminal";
 
 import { parseChangeRequestUrl } from "../lib/openPullRequestLink";
+import { useAtomValue } from "@effect/atom-react";
 import { useEnvironmentQuery } from "../state/query";
+import { serverEnvironment } from "../state/server";
 import { linkedPullRequestDetailAtom, useSharedPullRequestSummary } from "../state/pullRequests";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { vcsEnvironment } from "../state/vcs";
@@ -985,11 +987,18 @@ export function ThreadRowLeadingStatus({
   };
   const pr = resolveDisplayedThreadPr(displayedPrInput);
   const prStatus = prStatusIndicator(pr, resolveDisplayedThreadPrProvider(displayedPrInput));
+  const hasActiveScheduledTask = useAtomValue(
+    serverEnvironment.threadHasActiveScheduledTask({
+      environmentId: thread.environmentId,
+      threadId: thread.id,
+    }),
+  );
   const threadStatus = resolveThreadStatusPill({
     thread: {
       ...thread,
       lastVisitedAt,
     },
+    hasActiveScheduledTask,
   });
 
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);

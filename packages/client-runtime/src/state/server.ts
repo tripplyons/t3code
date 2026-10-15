@@ -6,6 +6,7 @@ import {
   type ServerLifecycleStreamReadyEvent,
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateResult,
+  type ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -38,6 +39,7 @@ import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
+import { arrayElementsEqual } from "./entities.ts";
 import {
   isRpcClientError,
   request,
@@ -986,6 +988,39 @@ export function createServerEnvironmentAtoms<R, E>(
     readonly environmentId: EnvironmentId;
     readonly input: EnvironmentRpcInput<typeof WS_METHODS.subscribeServerLifecycle>;
   }) => welcomeFamily(target.environmentId);
+  /** Live scheduled-task list: snapshot on subscribe, fresh list after every server-side change. */
+  const scheduledTasksLive = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:server:scheduled-tasks:live",
+    tag: WS_METHODS.scheduledTasksSubscribe,
+  });
+  // An enabled task bound to a thread, such as an agent's monitor, means the
+  // thread still has work coming. The list keeps its identity, and the
+  // per-thread atom is a boolean, so thread rows do not re-render each time a
+  // task run updates the scheduled-task list.
+  const activeScheduledTaskThreadIds = Atom.family((environmentId: EnvironmentId) => {
+    let previous: ReadonlyArray<ThreadId> = [];
+    return Atom.make((get): ReadonlyArray<ThreadId> => {
+      const tasks =
+        Option.getOrNull(AsyncResult.value(get(scheduledTasksLive({ environmentId, input: {} }))))
+          ?.tasks ?? [];
+      const next = [
+        ...new Set(
+          tasks.flatMap((task) => (task.enabled && task.threadId !== null ? [task.threadId] : [])),
+        ),
+      ].sort();
+      if (arrayElementsEqual(previous, next)) return previous;
+      previous = next;
+      return next;
+    }).pipe(
+      Atom.withLabel(`environment-data:server:active-scheduled-task-threads:${environmentId}`),
+    );
+  });
+  const threadHasActiveScheduledTaskFamily = Atom.family((key: string) => {
+    const [environmentId, threadId] = JSON.parse(key) as [EnvironmentId, ThreadId];
+    return Atom.make((get) =>
+      get(activeScheduledTaskThreadIds(environmentId)).includes(threadId),
+    ).pipe(Atom.withLabel(`environment-data:server:thread-has-active-scheduled-task:${key}`));
+  });
   const updateSettings = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:server:update-settings",
     tag: WS_METHODS.serverUpdateSettings,
@@ -1106,11 +1141,13 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-task:webhook-delivery",
       tag: WS_METHODS.scheduledTasksGetWebhookDelivery,
     }),
-    /** Live scheduled-task list: snapshot on subscribe, fresh list after every server-side change. */
-    scheduledTasksLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:server:scheduled-tasks:live",
-      tag: WS_METHODS.scheduledTasksSubscribe,
-    }),
+    scheduledTasksLive,
+    activeScheduledTaskThreadIds,
+    threadHasActiveScheduledTask: (thread: {
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+    }) =>
+      threadHasActiveScheduledTaskFamily(JSON.stringify([thread.environmentId, thread.threadId])),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     // Slow sources answer from cache first: that summary stays on screen, with
