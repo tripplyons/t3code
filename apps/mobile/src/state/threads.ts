@@ -14,6 +14,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
+import { serverEnvironment } from "./server";
 
 export const threadEnvironment = createThreadEnvironmentAtoms(
   connectionAtomRuntime,
@@ -26,6 +27,7 @@ export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
 export const environmentThreadShells = createEnvironmentThreadShellAtoms({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   snapshotAtom: threadEnvironment.snapshotAtom,
+  activeScheduledTaskThreadIds: serverEnvironment.activeScheduledTaskThreadIds,
 });
 
 const EMPTY_THREAD_STATE_ATOM = Atom.make(AsyncResult.success(EMPTY_ENVIRONMENT_THREAD_STATE)).pipe(

@@ -339,14 +339,26 @@ export function sortPinnedThreadsByOrderKey<
 }
 
 type ThreadBoardStatusInput = Partial<
-  Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "runtime">
+  Pick<
+    EnvironmentThreadShell,
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "runtime"
+    | "hasActiveScheduledTask"
+  >
 >;
 
 /** Shared by the board and active lists on every client. */
 export function resolveThreadBoardGroup(
   thread: ThreadBoardStatusInput,
 ): "needs-you" | "working" | "idle" {
-  if (thread.hasPendingApprovals || thread.hasPendingUserInput) return "needs-you";
+  if (
+    thread.hasPendingApprovals ||
+    thread.hasPendingUserInput ||
+    thread.pendingSubagentRequest != null
+  )
+    return "needs-you";
   if (thread.runtime?.status === "failed") return "needs-you";
   if (
     thread.runtime &&
@@ -355,6 +367,7 @@ export function resolveThreadBoardGroup(
     )
   )
     return "working";
+  if (thread.hasActiveScheduledTask) return "working";
   return "idle";
 }
 

@@ -89,6 +89,7 @@ function threadRunStatusIsActive(status: ThreadRuntimeSummary["status"]): boolea
 }
 
 export interface EnvironmentThreadShell {
+  readonly hasActiveScheduledTask?: boolean;
   readonly recentActivityPreviews?: OrchestrationV2ThreadShell["recentActivityPreviews"];
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;

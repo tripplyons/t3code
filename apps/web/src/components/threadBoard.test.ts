@@ -177,6 +177,31 @@ describe("thread board", () => {
     ]);
   });
 
+  it("groups scheduled waiting threads with running threads in the board and sidebar", () => {
+    const rows = [
+      thread({ id: ThreadId.make("idle"), createdAt: "2026-09-20T12:00:00.000Z" }),
+      thread({ id: ThreadId.make("waiting"), hasActiveScheduledTask: true, latestRun: completed }),
+      thread({ id: ThreadId.make("running"), runtime: runtime("running") }),
+    ];
+    expect(resolveThreadBoardColumn(rows[1]!, options)).toBe("working");
+    expect(sortThreadsForSidebar(rows).map((row) => row.id)).toEqual([
+      "running",
+      "waiting",
+      "idle",
+    ]);
+    expect(
+      resolveThreadBoardColumn(
+        thread({ hasActiveScheduledTask: true, hasPendingUserInput: true }),
+        options,
+      ),
+    ).toBe("needs-you");
+    expect(
+      resolveThreadBoardColumn(
+        thread({ hasActiveScheduledTask: true, runtime: runtime("failed") }),
+        options,
+      ),
+    ).toBe("needs-you");
+  });
   it("groups completed results and proposed plans with idle threads", () => {
     expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
     expect(resolveThreadBoardColumn(thread({ latestRun: completed }), options)).toBe("idle");

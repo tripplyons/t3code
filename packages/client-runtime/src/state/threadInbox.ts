@@ -13,6 +13,7 @@ type WorkingThreadInput = Pick<
   | "interactionMode"
   | "latestRun"
   | "runtime"
+  | "hasActiveScheduledTask"
 >;
 
 /** Threads busy with work that does not need the user fold into the Working
@@ -22,7 +23,13 @@ type WorkingThreadInput = Pick<
 export function isThreadWorking(thread: WorkingThreadInput): boolean {
   if (thread.hasPendingApprovals || thread.hasPendingUserInput) return false;
   if (thread.pendingSubagentRequest != null) return false;
-  if (!threadRuntimeIsActive(thread.runtime) && thread.runtime?.status !== "idle") return false;
+  if (thread.runtime?.status === "failed") return false;
+  if (
+    !threadRuntimeIsActive(thread.runtime) &&
+    thread.runtime?.status !== "idle" &&
+    !thread.hasActiveScheduledTask
+  )
+    return false;
   // A plan prompt outranks lingering background work: the user has to act on it.
   const run = thread.latestRun;
   const runSettled =
