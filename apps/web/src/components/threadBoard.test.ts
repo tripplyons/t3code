@@ -252,6 +252,28 @@ describe("thread board", () => {
     });
     expect(board.flatMap((column) => column.threads.map((item) => item.id))).toEqual(["pinned"]);
   });
+  it("hides subagent threads of settled parents while retaining forks", () => {
+    const parent = thread({ id: ThreadId.make("parent"), settledOverride: "settled" });
+    const child = thread({
+      id: ThreadId.make("child"),
+      latestRun: completed,
+      lineage: {
+        parentThreadId: parent.id,
+        rootThreadId: parent.id,
+        relationshipToParent: "subagent",
+      },
+    });
+    const fork = thread({
+      id: ThreadId.make("fork"),
+      lineage: { ...child.lineage, relationshipToParent: "fork" },
+    });
+    const board = buildThreadBoard([parent, child, fork], {
+      now,
+      projectKey: "",
+      serverConfigs: new Map([[environmentId, capabilities]]),
+    });
+    expect(board.flatMap((column) => column.threads.map((item) => item.id))).toEqual(["fork"]);
+  });
   it("scopes project filtering by environment even when project IDs collide", () => {
     const remote = EnvironmentId.make("remote");
     const board = buildThreadBoard(

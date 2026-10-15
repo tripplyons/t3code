@@ -3,7 +3,7 @@ import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../types";
-import { sortThreadsForSidebar } from "./Sidebar.logic";
+import { filterSidebarV2VisibleThreads, sortThreadsForSidebar } from "./Sidebar.logic";
 
 export const THREAD_BOARD_COLUMNS = [
   { id: "needs-you", label: "Awaiting" },
@@ -44,10 +44,10 @@ export function buildThreadBoard(
     working: [],
     idle: [],
   };
-  const visibleThreads = threads.filter((thread) => {
-    if (thread.archivedAt !== null) return false;
-    if (options.projectKey && `${thread.environmentId}:${thread.projectId}` !== options.projectKey)
-      return false;
+  const visibleThreads = filterSidebarV2VisibleThreads(
+    threads,
+    options.projectKey ? new Set([options.projectKey]) : null,
+  ).filter((thread) => {
     const capabilities = options.serverConfigs.get(thread.environmentId)?.environment.capabilities;
     return capabilities?.threadSettlement !== true || thread.settledOverride !== "settled";
   });
