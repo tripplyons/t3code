@@ -900,6 +900,15 @@ describe("resolveSidebarThreadStatus", () => {
 
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false, runtime: null };
 
+  it("shows a ready thread with an active scheduled task as waiting, below failures", () => {
+    const completed = { ...idle, runtime: { ...runtime, status: "completed" as const } };
+    expect(resolveSidebarThreadStatus(completed)).toBe("ready");
+    expect(resolveSidebarThreadStatus(completed, true)).toBe("waiting");
+    expect(
+      resolveSidebarThreadStatus({ ...idle, runtime: { ...runtime, status: "failed" } }, true),
+    ).toBe("failed");
+  });
+
   it("prioritizes approval over a running runtime", () => {
     expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, runtime })).toBe(
       "approval",
