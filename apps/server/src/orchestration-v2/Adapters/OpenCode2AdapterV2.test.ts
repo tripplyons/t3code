@@ -3215,6 +3215,149 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  /** A note a plugin queued on the session: OpenCode sends it to the model, not as a user message. */
+  const pluginNote = (inboxID: string, text: string, metadata?: Record<string, unknown>) =>
+    event("session.inbox.enqueued", {
+      inboxID,
+      sessionID: SESSION,
+      item: {
+        type: "synthetic",
+        payload: {
+          text,
+          description: "Autoresearch",
+          ...(metadata === undefined ? {} : { metadata }),
+        },
+        delivery: "steer",
+      },
+    });
+  const commands = [
+    out("command.list", "<any>"),
+    reply("command.list", {
+      location: { directory: WORK },
+      data: [{ name: "autoresearch-status" }, { name: "autoresearch-resume" }],
+    }),
+  ];
+
+  it.effect("ends a plugin command's turn that starts no run, showing the note it queued", () =>
+    Effect.gen(function* () {
+      // A plugin's command answers with a note alone, so OpenCode starts no
+      // execution and sends no end for the turn.
+      const { runtime, thread } = yield* resumed([
+        ...commands,
+        out("message.list", { sessionID: SESSION, order: "desc", limit: "1" }),
+        reply("message.list", {
+          data: [
+            { id: "msg_idle_before", time: { created: 1 }, type: "idle", outcome: "succeeded" },
+          ],
+          cursor: {},
+        }),
+        out("session.command", { sessionID: SESSION, name: "autoresearch-status", text: "" }),
+        reply("session.command", null),
+        pluginNote("msg_status_note", "Campaign ar-1: running\nBest 80"),
+      ]);
+      const noted = yield* Deferred.make<void>();
+      const events = yield* runtime.events.pipe(
+        Stream.tap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "system_notice"
+            ? Deferred.succeed(noted, undefined)
+            : Effect.void,
+        ),
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.startTurn({
+        ...turnInput(thread),
+        message: { ...turnInput(thread).message, text: "/autoresearch-status" },
+      });
+      yield* Deferred.await(noted);
+      yield* TestClock.adjust("2 seconds");
+      const collected = yield* Fiber.join(events);
+      assert.deepEqual(
+        collected.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "system_notice"
+            ? [{ title: event.turnItem.title, message: event.turnItem.message }]
+            : [],
+        ),
+        [{ title: "Autoresearch", message: "Campaign ar-1: running\nBest 80" }],
+      );
+      assert.deepInclude(collected.at(-1), { type: "turn.terminal", status: "completed" });
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("runs a steer naming a workspace command as that command", () =>
+    Effect.gen(function* () {
+      const { runtime, thread } = yield* resumed([
+        out("session.prompt", { sessionID: SESSION, id: PROMPT_ID, text: "<any>" }),
+        promptAccepted,
+        event("session.execution.started", { sessionID: SESSION }),
+        // Sent as the command, not as text for the model; the replay refuses a prompt.
+        ...commands,
+        out("session.command", { sessionID: SESSION, name: "autoresearch-resume", text: "ar-1" }),
+        reply("session.command", null),
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ]);
+      const ended = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      yield* runtime.startTurn(turnInput(thread));
+      yield* runtime.steerTurn({
+        threadId,
+        runId: RunId.make("run:opencode2-adapter"),
+        providerThread: thread,
+        providerTurnId: yield* providerTurnId,
+        message: {
+          ...turnInput(thread).message,
+          messageId: MessageId.make("message:opencode2-adapter:steer"),
+          text: "/autoresearch-resume ar-1",
+        },
+      });
+      assert.equal((yield* Fiber.join(ended))?.status, "completed");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("offers a plugin's note between turns as a notification, not T3's own", () =>
+    Effect.gen(function* () {
+      const offered =
+        yield* Deferred.make<ProviderContinuationRequests.ProviderContinuationRequest>();
+      const offers: Array<ProviderContinuationRequests.ProviderContinuationRequest> = [];
+      const { runtime, thread } = yield* resumed([
+        out("session.prompt", { sessionID: SESSION, id: PROMPT_ID, text: "<any>" }),
+        promptAccepted,
+        event("session.execution.started", { sessionID: SESSION }),
+        event("session.execution.succeeded", { sessionID: SESSION }),
+        // T3's own note, such as why it declined a form, is not shown back.
+        pluginNote("msg_t3_note", "Declined: T3 cannot show this form.", { source: "t3-code" }),
+        pluginNote("msg_pause_note", "Campaign ar-1 paused.\nResume with /autoresearch-resume."),
+      ]).pipe(
+        Effect.provideService(ProviderContinuationRequests.ProviderContinuationRequests, {
+          offer: (request) =>
+            Effect.suspend(() => {
+              offers.push(request);
+              return Deferred.succeed(offered, request).pipe(Effect.asVoid);
+            }),
+          take: Effect.never,
+        }),
+      );
+      const ended = yield* terminals(runtime, 2);
+      yield* runtime.startTurn(withLineage(thread));
+      const offer = yield* Deferred.await(offered);
+      assert.deepEqual(
+        offers.map((each) => each.detail),
+        ["Campaign ar-1 paused.\nResume with /autoresearch-resume."],
+      );
+      assert.deepEqual(offer.notification, {
+        source: { kind: "background_task" },
+        outcome: "updated",
+        summary: "Campaign ar-1 paused.",
+      });
+      // No follow-up runs for the note, so its turn sends nothing and ends at once.
+      yield* runtime.startTurn(continuationTurn(thread, offer, "note"));
+      assert.deepEqual(
+        [...(yield* Fiber.join(ended))].map((terminal) => terminal.status),
+        ["completed", "completed"],
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "backfills and ends a subagent's turn whose execution ended while the stream was down",
     () =>

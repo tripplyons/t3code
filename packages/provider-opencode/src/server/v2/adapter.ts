@@ -268,6 +268,8 @@ interface ActiveTurn {
    * own `session.execution.started` belongs to it.
    */
   awaitingStart: boolean;
+  /** Set once an execution of this turn's own started; a `/name` command's turn may never get one. */
+  executed: boolean;
   /**
    * Prefixes a subagent session's tool ids in native item ids: the model
    * names tool calls, so a child's could repeat its parent's.
@@ -659,6 +661,18 @@ const reportOutcome = (state: string | undefined) =>
         ? ("cancelled" as const)
         : ("unknown" as const);
 
+/** A notice's first line, as its notification's summary. */
+const noticeSummary = (text: string) => {
+  const line =
+    text
+      .split("\n")
+      .find((candidate) => candidate.trim().length > 0)
+      ?.trim() ?? text;
+  return line.length > NOTICE_SUMMARY_LENGTH
+    ? `${line.slice(0, NOTICE_SUMMARY_LENGTH - 1)}…`
+    : line;
+};
+
 /** A subagent's answer, without the `<subagent …>` wrapper OpenCode gives the model. */
 const subagentOutput = (text: string) =>
   /^<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>$/.exec(text.trim())?.[1] ?? text;
@@ -686,6 +700,16 @@ const LOST_BACKGROUND =
 /** How long a turn waits on the directory's commands or skills before sending the text as is. */
 const INVENTORY_TIMEOUT = "5 seconds";
 const ACTIVE_CHECK_TIMEOUT = "5 seconds";
+/**
+ * How long a `/name` command has to start a run before its turn ends as one
+ * that ran nothing. A template command queues its prompt just after the
+ * command answers; a plugin's command may only queue notes.
+ */
+const COMMAND_START_GRACE = "2 seconds";
+/** Marks the notes T3 queues for the model itself, so they are not shown back as notices. */
+const T3_SYNTHETIC_SOURCE = "t3-code";
+/** The longest notice line a notification summary keeps. */
+const NOTICE_SUMMARY_LENGTH = 200;
 /** Answers that mean the server refused a prompt; any other failure may have been accepted. */
 const CLEAR_PROMPT_REJECTIONS: ReadonlySet<string> = new Set([
   "InvalidRequestError",
@@ -1296,6 +1320,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       settledInbox: new Set(),
       heldEnd: undefined,
       awaitingStart: options.awaitingStart,
+      executed: false,
       scope: options.scope,
       usedSubagents: false,
     });
@@ -2353,6 +2378,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         case "session.execution.started":
           // The execution that delivers steers the last one ended without.
           turn.heldEnd = undefined;
+          turn.executed = true;
           return;
         case "session.execution.succeeded":
           return yield* endExecution(state, turn, {
@@ -2466,6 +2492,58 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             ? "cancelled"
             : "completed";
       for (const each of calls) yield* settleCall(each, status, subagentOutput(payload.text));
+    });
+
+    /**
+     * A note OpenCode queued for the model without a run of T3's, such as a
+     * plugin's status or pause message. It is shown on the turn running, or
+     * between turns as a notification whose continuation turn prompts nothing:
+     * no wake matches its message, so the turn ends at once. T3's own notes
+     * are not shown back.
+     */
+    const onNotice = Effect.fnUntraced(function* (
+      state: ThreadState,
+      inboxId: string,
+      payload: {
+        readonly text: string;
+        readonly description?: string | undefined;
+        readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+      },
+    ) {
+      const text = payload.text.trim();
+      if (text.length === 0 || stringField(payload.metadata, "source") === T3_SYNTHETIC_SOURCE) {
+        return;
+      }
+      const turn = state.active;
+      if (turn !== undefined) {
+        const now = yield* DateTime.now;
+        yield* emit({
+          type: "turn_item.updated",
+          driver,
+          turnItem: {
+            ...itemBase(state, turn, `${turn.scope}notice:${inboxId}`, "completed", now, now, now),
+            nodeId: turn.input.rootNodeId,
+            type: "system_notice",
+            title: payload.description?.trim() || null,
+            message: text,
+          },
+        });
+        return;
+      }
+      const route = state.providerThread.appThreadId;
+      if (state.subagent !== undefined || route === null) return;
+      yield* continuationRequests.offer({
+        threadId: route,
+        providerThreadId: state.providerThread.id,
+        driver,
+        detail: text,
+        messageId: yield* idAllocator.allocate.message({ threadId: route, ordinal: 0 }),
+        notification: {
+          source: { kind: "background_task" },
+          outcome: "updated",
+          summary: noticeSummary(text),
+        },
+      });
     });
 
     /**
@@ -2603,6 +2681,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         if (turn !== undefined) {
           turn.awaitingStart = false;
           turn.heldEnd = undefined;
+          turn.executed = true;
           return;
         }
       }
@@ -2670,7 +2749,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         state.subagent.queued ??= event.data.inboxID;
       }
       if (event.type === "session.inbox.enqueued" && event.data.item.type === "synthetic") {
-        return yield* onReport(state, event.data.inboxID, event.data.item.payload);
+        const { payload } = event.data.item;
+        return stringField(payload.metadata, "source") === "subagent"
+          ? yield* onReport(state, event.data.inboxID, payload)
+          : yield* onNotice(state, event.data.inboxID, payload);
       }
       // Cancelled, or delivered into a turn already running: no wake reports it.
       // A steer of the running turn's is settled the same way.
@@ -2715,7 +2797,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       // A session runs one execution at a time, and each opens with `started`
       // on this ordered stream, so what comes before it is the stopped run's.
       if (turn.awaitingStart) {
-        if (event.type === "session.execution.started") turn.awaitingStart = false;
+        if (event.type === "session.execution.started") {
+          turn.awaitingStart = false;
+          turn.executed = true;
+        }
         return;
       }
       return yield* onTurnEvent(state, turn, event);
@@ -2870,6 +2955,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         const turn = state.active;
         if (turn === undefined) continue;
         const ended = yield* backfill(sessionId, state);
+        // A run that started in the gap is the turn's own, so a command's grace leaves it.
+        if (sessionId in active) turn.executed = true;
         if (sessionId in active || state.active !== turn) continue;
         yield* finishTurn(
           state,
@@ -3691,6 +3778,47 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     /**
+     * The workspace command a bare `/name args` message names, read from the
+     * directory's commands only when the text could name one. A message whose
+     * name is not a command is sent as text.
+     */
+    const workspaceCommand = Effect.fnUntraced(function* (
+      directory: string,
+      message: { readonly text: string; readonly attachments: ReadonlyArray<unknown> },
+    ) {
+      const command = message.attachments.length === 0 ? commandOf(message.text) : undefined;
+      if (command === undefined) return undefined;
+      const commands = yield* client.command.list({ location: { directory } }).pipe(
+        Effect.timeout(INVENTORY_TIMEOUT),
+        Effect.map((list) => list.data),
+        Effect.orElseSucceed(() => []),
+      );
+      return commands.some((entry) => entry.name === command.name) ? command : undefined;
+    });
+
+    /**
+     * Ends a `/name` command's turn when no execution started for it. A
+     * plugin's command can answer with notes alone, and then OpenCode sends no
+     * end. A lost stream leaves the turn to the reconnect, which reads its end
+     * from the server.
+     */
+    const endIfCommandOnly = (state: ThreadState, turn: ActiveTurn) =>
+      Effect.sleep(COMMAND_START_GRACE).pipe(
+        Effect.andThen(
+          lock.withPermit(
+            Effect.suspend(() =>
+              state.active === turn &&
+              !turn.executed &&
+              !busy.has(state.sessionId) &&
+              streamFailure === undefined
+                ? finishTurn(state, { status: "completed" })
+                : Effect.void,
+            ),
+          ),
+        ),
+      );
+
+    /**
      * What a turn sends: `/compact` compacts, `/name args` naming a workspace
      * command runs it, and anything else is a prompt with the `$skill`s it
      * names attached. Commands and skills are read from the session's
@@ -3719,21 +3847,16 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         return yield* client.session.compact({ sessionID, id }).pipe(Effect.asVoid);
       }
       const location = { directory: turnInput.runtimePolicy.cwd ?? host.paths.cwd };
-      const command = bare ? commandOf(text) : undefined;
+      const command = yield* workspaceCommand(location.directory, turnInput.message);
       if (command !== undefined) {
-        const commands = yield* client.command.list({ location }).pipe(
-          Effect.timeout(INVENTORY_TIMEOUT),
-          Effect.map((list) => list.data),
-          Effect.orElseSucceed(() => []),
-        );
-        if (commands.some((entry) => entry.name === command.name)) {
-          // `session.command` takes no id of T3's and its answer carries none,
-          // so the turn remembers where the history stood before it.
-          const newest = yield* client.message.list({ sessionID, order: "desc", limit: 1 });
-          yield* markBefore(sessionId, newest.data[0]?.id ?? null);
-          if (!sending()) return;
-          return yield* client.session.command({ sessionID, ...command });
-        }
+        // `session.command` takes no id of T3's and its answer carries none,
+        // so the turn remembers where the history stood before it.
+        const newest = yield* client.message.list({ sessionID, order: "desc", limit: 1 });
+        yield* markBefore(sessionId, newest.data[0]?.id ?? null);
+        if (!sending()) return;
+        yield* client.session.command({ sessionID, ...command });
+        yield* Effect.forkIn(endIfCommandOnly(state, turn), sessionScope);
+        return;
       }
       const skills = SKILL_MENTION.test(text)
         ? skillsNamed(
@@ -4098,6 +4221,14 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const inboxID = steerPromptId(sessionId, steerInput.message.messageId);
           // A retried steer that already reached the model is not sent again.
           if (turn.settledInbox.has(inboxID)) return;
+          // A workspace command runs as one, as it does when it starts a turn,
+          // rather than reaching the model as text. What it queues is OpenCode's.
+          const command = yield* workspaceCommand(state.directory, steerInput.message);
+          if (command !== undefined) {
+            yield* client.session.command({ sessionID: Session.ID.make(sessionId), ...command });
+            turn.settledInbox.add(inboxID);
+            return;
+          }
           turn.steers.add(inboxID);
           state.strandedSteers.delete(inboxID);
           yield* client.session
@@ -4270,6 +4401,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               .synthetic({
                 sessionID,
                 text: declinedNote(native.action, native.resources),
+                metadata: { source: T3_SYNTHETIC_SOURCE },
                 delivery: "steer",
                 resume: false,
               })
