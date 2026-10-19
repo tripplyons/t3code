@@ -106,7 +106,6 @@ export function resolveProviderCompatibility(
   };
 }
 
-/** A remote policy replaces its matching bundled policy; omission keeps the bundle. */
 export function applyProviderCompatibility(
   snapshot: ServerProvider,
   policies: ReadonlyArray<ProviderCompatibilityPolicy> | undefined,

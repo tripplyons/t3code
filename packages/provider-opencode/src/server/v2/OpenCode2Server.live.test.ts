@@ -32,7 +32,6 @@ import * as OpenCode2Server from "./OpenCode2Server.ts";
 
 const binaryPath = process.env.OPENCODE2_BIN;
 
-// A negative pid probes the whole process group, which T3 stops as one unit.
 const isAlive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -42,19 +41,12 @@ const isAlive = (pid: number) => {
   }
 };
 
-/**
- * Stops a server the test spawned itself: SIGTERM, then SIGKILL if it is still
- * alive after five seconds. Keyed on the PID captured at spawn, never on a
- * pattern. Servers T3 spawns are stopped by T3, through the instance scope.
- */
 const stopByPid = (pid: number) =>
   Effect.gen(function* () {
     const signal = (name: NodeJS.Signals) => {
       try {
         process.kill(pid, name);
-      } catch {
-        // Already exited.
-      }
+      } catch {}
     };
     signal("SIGTERM");
     for (let attempt = 0; attempt < 50 && isAlive(pid); attempt++) {
@@ -63,10 +55,6 @@ const stopByPid = (pid: number) =>
     if (isAlive(pid)) signal("SIGKILL");
   });
 
-/**
- * Starts `opencode serve` the way a user would run it themselves. It is stopped
- * by its PID when the calling scope closes, whether or not the test passed.
- */
 const startExternalServer = Effect.fn("OpenCode2ServerLive.startExternalServer")(function* (input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly directory: string;
@@ -114,13 +102,9 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
           XDG_DATA_HOME: path.join(root, "data"),
           XDG_STATE_HOME: path.join(root, "state"),
           XDG_CACHE_HOME: path.join(root, "cache"),
-          // Ignored: the T3 password is the only one the server sees.
           OPENCODE_SERVER_PASSWORD: "ambient-password",
         };
 
-        // The instance owns its server: building the layer spawns nothing, and
-        // closing its scope stops whatever it spawned. The scope is released
-        // even when an assertion below fails; it is closed early on purpose.
         const instanceScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
           Scope.close(scope, Exit.void),
         );
@@ -152,7 +136,6 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         assert.isFalse(spawned.external);
         assert.isTrue(isAlive(spawned.pid));
 
-        // A second location is served by the same process.
         const secondLocation = yield* server.withConnection((connection) =>
           Effect.gen(function* () {
             const info = yield* connection.client.server.info();
@@ -168,7 +151,6 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         assert.strictEqual(secondLocation.session.location.directory, second);
         assert.strictEqual(spawned.session.location.directory, first);
 
-        // External URL: the configured password works, a wrong one is a 401.
         const external = yield* OpenCode2Server.make({
           binaryPath: binaryPath!,
           serverUrl: spawned.url,
@@ -188,8 +170,6 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         const ambientRejected = yield* ambient.withConnection(() => Effect.void).pipe(Effect.flip);
         assert.include(ambientRejected.detail, "rejected the server password");
 
-        // An external server whose password is not ASCII: OpenCode decodes Basic
-        // credentials as UTF-8, so the configured password must be sent that way.
         const utf8Password = "pässwörd€";
         const externalServer = yield* startExternalServer({
           environment: OpenCode2Server.serverEnvironment(environment, Redacted.make(utf8Password)),
@@ -217,7 +197,6 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         const asciiRejected = yield* asciiOnly.withConnection(() => Effect.void).pipe(Effect.flip);
         assert.include(asciiRejected.detail, "rejected the server password");
 
-        // Closing the instance stops the server it spawned.
         yield* Scope.close(instanceScope, Exit.void);
         for (let attempt = 0; attempt < 50 && isAlive(-spawned.pid); attempt++) {
           yield* Effect.sleep("100 millis");

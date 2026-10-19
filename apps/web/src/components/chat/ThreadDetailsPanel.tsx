@@ -38,6 +38,7 @@ export interface ThreadDetailsPanelProps extends Pick<
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   showOpenInPicker: boolean;
+  openInShortcutEnabled: boolean;
   gitCwd: string | null;
   isGitRepo: boolean;
   envLocked: boolean;
@@ -46,7 +47,6 @@ export interface ThreadDetailsPanelProps extends Pick<
   onAutoEnvironment?: (() => void) | undefined;
   onEnvironmentChange: (environmentId: EnvironmentId) => void;
   onEnvModeChange: (mode: EnvMode) => void;
-  /** The thread's env mode as ChatView resolves it. */
   envMode: EnvMode;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
@@ -127,6 +127,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   environmentId={props.environmentId}
                   availableEditors={props.availableEditors}
                   openInCwd={props.gitCwd}
+                  enableShortcut={props.openInShortcutEnabled}
                   displayMode="panel"
                 />
               ) : null}

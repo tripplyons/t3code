@@ -105,7 +105,6 @@ export function renderGhosttySnapshot(options: {
   readonly focused?: boolean;
   readonly selectionBackground?: string;
   readonly hoveredLinkRange?: GhosttyCellRange | null;
-  /** Vertical origin of row 0; defaults to the horizontal padding. */
   readonly originY?: number;
 }): void {
   const {
@@ -256,7 +255,6 @@ export function renderGhosttySnapshot(options: {
     const cursorWidth = cell?.wide === GHOSTTY_CELL_WIDE.wide ? metrics.width * 2 : metrics.width;
     context.fillStyle = cssColor(snapshot.cursor);
     if (!focused) {
-      // An unfocused terminal draws a hollow cursor so the active pane is obvious.
       context.strokeStyle = cssColor(snapshot.cursor);
       context.strokeRect(left + 0.5, top + 0.5, cursorWidth - 1, metrics.height - 1);
     } else if (snapshot.cursorStyle === 0) {

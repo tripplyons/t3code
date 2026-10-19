@@ -1,10 +1,5 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 
-/**
- * What the floating pill says. Connection, syncing, and working share one
- * element so the label swaps in place instead of one pill fading out for
- * another. The connection variant is tappable and triggers a reconnect.
- */
 export type FloatingWorkingStatus =
   | { readonly kind: "working"; readonly startedAt: string }
   | { readonly kind: "syncing"; readonly label: string }
@@ -16,11 +11,14 @@ export type FloatingWorkingStatus =
       readonly onPress: () => void;
     }
   // The turn settled while background work it started still runs.
-  | { readonly kind: "background"; readonly label: string; readonly accessibilityLabel: string }
+  | {
+      readonly kind: "background";
+      readonly label: string;
+      readonly accessibilityLabel: string;
+      readonly waiting: boolean;
+    }
   // A native /goal on an idle thread: paused, blocked, complete, or set.
   | { readonly kind: "goal"; readonly label: string; readonly accessibilityLabel: string }
-  // A task whose thread the server has not created yet: the worktree may
-  // still be checking out, so there is no turn to time.
   | { readonly kind: "preparing"; readonly label: string }
   | {
       readonly kind: "connection";
@@ -29,10 +27,6 @@ export type FloatingWorkingStatus =
       readonly onPress: () => void;
     };
 
-/**
- * The pill's connection variant, or null once the environment is connected and
- * the pill is free to report sync and working state instead.
- */
 export function connectionFloatingStatus(input: {
   readonly connectionError: string | null;
   readonly connectionState: EnvironmentConnectionPhase;

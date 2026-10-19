@@ -11,6 +11,7 @@ import {
   type LimitPool,
   type LimitPoolMember,
   type LimitPoolWindow,
+  paceRemainingPercent,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
@@ -35,13 +36,11 @@ import {
   useResetCredit,
 } from "./UsageLimits";
 
-/** `someone@example.com` → `SE`: enough to tell accounts apart, too little to identify one. */
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   return `${local[0] ?? ""}${domain[0] ?? ""}`.toUpperCase() || "?";
 }
 
-/** A stable hue per email, so the same account gets the same chip on every visit. */
 function accountHue(email: string): number {
   let hash = 0;
   for (let index = 0; index < email.length; index += 1) {
@@ -50,7 +49,6 @@ function accountHue(email: string): number {
   return Math.abs(hash) % 360;
 }
 
-/** The two-letter chip for an email, coloured by a stable hue per address. */
 function AccountChip({ email }: { readonly email: string }) {
   const hue = accountHue(email);
   return (
@@ -65,10 +63,6 @@ function AccountChip({ email }: { readonly email: string }) {
   );
 }
 
-/**
- * The same mark the model picker uses for a native instance (provider glyph,
- * initials badge, accent); hub accounts have no instance, so they get the chip.
- */
 function AccountAvatar({
   account,
   className,
@@ -96,11 +90,6 @@ function AccountAvatar({
   return account.email ? <AccountChip email={account.email} /> : null;
 }
 
-/**
- * Who an account is, without printing the email: the instance name when there
- * is one, else a two-letter chip. The address itself is revealed on demand in
- * the segment's popover.
- */
 function AccountName({
   account,
   className,
@@ -132,11 +121,6 @@ function Row({ label, children }: { readonly label: string; readonly children: R
   );
 }
 
-/**
- * Everything about one account in one window: plan, where it is signed in,
- * the email on request, reset time and share of the pool it restores, and the
- * reset-credit action. Opens on hover for a glance, on click to act.
- */
 function SegmentPopover({
   account,
   window,
@@ -149,12 +133,12 @@ function SegmentPopover({
   readonly window: LimitPoolMember["window"];
   readonly reset: LimitPoolWindow["resets"][number] | undefined;
   readonly now: number;
-  /** Redeem state owned by the segment, since the confirm lives outside this popover. */
   readonly redeem: ReturnType<typeof useResetCredit> | null;
   readonly onRedeem: () => void;
 }) {
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const remaining = remainingPercent(window);
+  const timeLeft = paceRemainingPercent(window, now);
   const resetsIn = formatResetsIn(window, now);
   const where =
     account.environments.length > 0
@@ -195,6 +179,7 @@ function SegmentPopover({
             {resetsIn ? ` · ${resetsIn.replace("resets in ", "in ")}` : ""}
           </Row>
         ) : null}
+        {timeLeft !== null ? <Row label="Even pace">{timeLeft}% left by now</Row> : null}
         {reset && reset.restoresPercent > 0 ? (
           <Row label="Restores">+{reset.restoresPercent}% of pool</Row>
         ) : null}
@@ -220,14 +205,14 @@ function SegmentPopover({
 }
 
 /**
- * One account's share of one pooled window: the segment, its popover, and the
- * reset confirm. The confirm is a sibling of the popover, not a child: dialogs
- * stack under popovers, and the popover closes as the confirm opens.
+ * The confirm is a sibling of the popover, not a child: dialogs stack under
+ * popovers, and the popover closes as the confirm opens.
  */
 function PoolSegment({
   account,
   window,
   reset,
+  refillPercent,
   color,
   now,
   index,
@@ -236,14 +221,15 @@ function PoolSegment({
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
   readonly reset: LimitPoolWindow["resets"][number] | undefined;
+  readonly refillPercent: number;
   readonly color: string;
   readonly now: number;
-  /** 1-based position in the bar, shown on the strip and its legend row to tie them together. */
   readonly index: number;
   readonly showAccountName: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
+  const timeLeft = paceRemainingPercent(window, now);
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   return (
@@ -254,35 +240,42 @@ function PoolSegment({
           <button
             type="button"
             style={{ gridColumn: index, gridRow: 1 }}
-            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
-            className="relative h-5 min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
+            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${timeLeft === null ? "" : `, ${timeLeft}% of the window left`}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+            className="relative h-5 min-w-0 cursor-pointer rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
           />
         }
       >
-        {/* Translucent so the label reads over the fill for any provider colour and theme. */}
-        <div
-          aria-hidden
-          className="absolute inset-y-0 left-0 rounded-md opacity-35"
-          style={{ width: `${remaining}%`, backgroundColor: color }}
-        />
-        {/* The spent share is hatched, not blank: it is what the countdown restores. */}
-        {remaining < 100 && reset ? (
+        <div aria-hidden className="absolute inset-0 overflow-hidden rounded-md">
           <div
             aria-hidden
-            className="absolute inset-y-0 right-0 opacity-20"
-            style={{
-              width: `${100 - remaining}%`,
-              backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 1px, transparent 1px 5px)`,
-            }}
+            className="absolute inset-y-0 left-0 rounded-md opacity-35"
+            style={{ width: `${remaining}%`, backgroundColor: color }}
+          />
+          {remaining < 100 && reset && refillPercent > 0 ? (
+            <div
+              aria-hidden
+              className="absolute inset-y-0 right-0 opacity-20"
+              style={{
+                width: `${Math.min(100 - remaining, refillPercent)}%`,
+                backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 1px, transparent 1px 5px)`,
+              }}
+            />
+          ) : null}
+        </div>
+        {timeLeft !== null ? (
+          <span
+            aria-hidden
+            className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-muted-foreground"
+            style={{ left: `${timeLeft}%` }}
           />
         ) : null}
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+          className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-md text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
         >
           {index}
         </span>
-        <div className="relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs @2xl/pool:flex">
+        <div className="relative hidden h-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md px-2 text-xs @2xl/pool:flex">
           {showAccountName ? (
             <AccountName
               account={account}
@@ -290,23 +283,24 @@ function PoolSegment({
             />
           ) : null}
           <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-          {/* Countdown and badge get their own plate: fill and hatching run under them otherwise. */}
-          <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
-            {resetsIn?.replace("resets in ", "↻ ") ?? ""}
-            {credits ? (
-              <>
-                {resetsIn ? (
-                  <span aria-hidden className="text-muted-foreground">
-                    ·
+          {resetsIn || credits ? (
+            <span className="ms-auto flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs whitespace-nowrap text-foreground tabular-nums">
+              {resetsIn?.replace("resets in ", "↻ ") ?? ""}
+              {credits ? (
+                <>
+                  {resetsIn ? (
+                    <span aria-hidden className="text-muted-foreground">
+                      ·
+                    </span>
+                  ) : null}
+                  <span aria-hidden className="inline-flex items-center gap-0.5 font-semibold">
+                    <TicketIcon className="size-3" aria-hidden />
+                    {credits}
                   </span>
-                ) : null}
-                <span aria-hidden className="inline-flex items-center gap-0.5 font-semibold">
-                  <TicketIcon className="size-3" aria-hidden />
-                  {credits}
-                </span>
-              </>
-            ) : null}
-          </span>
+                </>
+              ) : null}
+            </span>
+          ) : null}
         </div>
       </PopoverTrigger>
       <LegendRow account={account} window={window} color={color} now={now} index={index} />
@@ -335,11 +329,6 @@ function PoolSegment({
   );
 }
 
-/**
- * Below the strip at narrow widths: one row per account in bar order, carrying
- * the text the segment has no room for. Tapping a row opens the same popover
- * as its segment, so the two are one control with two handles.
- */
 function LegendRow({
   account,
   window,
@@ -395,7 +384,6 @@ function LegendRow({
   );
 }
 
-/** Split out so the redeem hook only runs for accounts that can redeem. */
 function RedeemableSegmentPopup({
   account,
   window,
@@ -433,25 +421,17 @@ function RedeemableSegmentPopup({
         onConfirm={() => void redeem.redeem()}
         disabled={!redeem.canManageProviders}
       />
-      {/* The popover closed before the confirm, so the outcome needs a home outside it. */}
-      {redeem.status ? (
+      {/* The popover closed before the confirm, so progress and the outcome need a home outside it. */}
+      {redeem.busy || redeem.status ? (
         <span role="status" className="col-span-full text-xs text-muted-foreground">
-          <AccountName account={account} className="font-medium text-foreground" /> {redeem.status}
+          <AccountName account={account} className="font-medium text-foreground" />{" "}
+          {redeem.busy ? "Using reset credit…" : redeem.status}
         </span>
       ) : null}
     </>
   );
 }
 
-/**
- * One pooled window as equal-width segments, one per account, each filled by
- * the share of that account's quota still open. Equal widths are honest: every
- * account contributes the same share of the pool, whatever its plan.
- *
- * Wide, each segment carries its own label. Narrow, the bar is a bare strip
- * and a legend below lists the accounts in the same order; both open the
- * same popover.
- */
 function PoolBar({
   pool,
   color,
@@ -475,6 +455,7 @@ function PoolBar({
               account={member.account}
               window={member.window}
               reset={restores.get(member.account.key)}
+              refillPercent={member.refillPercent}
               color={color}
               now={now}
               index={position + 1}
@@ -487,10 +468,6 @@ function PoolBar({
   );
 }
 
-/**
- * Big pooled number and the segment bar. Accounts keep the same column across
- * windows; each segment's popover shows its own reset time and share restored.
- */
 function PoolWindowCard({
   pool,
   color,
@@ -504,7 +481,6 @@ function PoolWindowCard({
   readonly label?: string | undefined;
   readonly description?: string | undefined;
 }) {
-  // The soonest reset that hands anything back; an untouched account resets to no effect.
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
   return (
     <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
@@ -566,11 +542,6 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
   );
 }
 
-/**
- * Accounts pooled per provider: what is open across all of them, who resets
- * next, and how much of the pool that hands back. Answers "can I keep going"
- * before "on which account".
- */
 export function UsageLimitsPooled({
   presentations,
   now,
@@ -637,7 +608,6 @@ export function UsageLimitsPooled({
   );
 }
 
-/** Sources and providers that could not be read, so a missing bar is not mistaken for a full one. */
 function LimitNotices({ notices }: { readonly notices: readonly string[] }) {
   if (notices.length === 0) return null;
   return (
