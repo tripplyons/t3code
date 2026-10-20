@@ -46,6 +46,8 @@ describe("V2 preview upgrade", () => {
         [63, "DropUnusedV1Projections"],
         [64, "CanonicalizeThreadPullRequestLinks"],
         [65, "ThreadActivityPreviewsV2"],
+        [66, "CodexUsageNativeTurnIndex"],
+        [67, "RepairClientSettlementTimestamps"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -134,6 +136,8 @@ describe("V2 preview upgrade", () => {
         [63, "DropUnusedV1Projections"],
         [64, "CanonicalizeThreadPullRequestLinks"],
         [65, "ThreadActivityPreviewsV2"],
+        [66, "CodexUsageNativeTurnIndex"],
+        [67, "RepairClientSettlementTimestamps"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
@@ -183,6 +187,8 @@ it.effect("upgrades the fork's 54-57 ledger without skipping V2 or losing legacy
       [63, "DropUnusedV1Projections"],
       [64, "CanonicalizeThreadPullRequestLinks"],
       [65, "ThreadActivityPreviewsV2"],
+      [66, "CodexUsageNativeTurnIndex"],
+      [67, "RepairClientSettlementTimestamps"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     assert.deepStrictEqual(yield* sql`SELECT * FROM fork_upgrade_sentinel`, [
@@ -220,6 +226,8 @@ it.effect("moves the fork's activity preview index off upstream migration 57", (
       [63, "DropUnusedV1Projections"],
       [64, "CanonicalizeThreadPullRequestLinks"],
       [65, "ThreadActivityPreviewsV2"],
+      [66, "CodexUsageNativeTurnIndex"],
+      [67, "RepairClientSettlementTimestamps"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     const history = yield* sql<{
@@ -244,6 +252,8 @@ it.effect("moves the fork's activity preview index off upstream migration 62", (
       [63, "DropUnusedV1Projections"],
       [64, "CanonicalizeThreadPullRequestLinks"],
       [65, "ThreadActivityPreviewsV2"],
+      [66, "CodexUsageNativeTurnIndex"],
+      [67, "RepairClientSettlementTimestamps"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     const history = yield* sql<{
@@ -267,6 +277,8 @@ it.effect("moves the fork's activity preview index off upstream migration 63", (
       [63, "DropUnusedV1Projections"],
       [64, "CanonicalizeThreadPullRequestLinks"],
       [65, "ThreadActivityPreviewsV2"],
+      [66, "CodexUsageNativeTurnIndex"],
+      [67, "RepairClientSettlementTimestamps"],
     ]);
     assert.deepStrictEqual(yield* runMigrations(), []);
     const history = yield* sql<{
