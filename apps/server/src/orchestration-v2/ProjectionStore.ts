@@ -1,4 +1,9 @@
-import { pendingGuestMessageCount } from "@t3tools/contracts";
+import {
+  pendingGuestMessageCount,
+  ThreadActivityPreview,
+  THREAD_ACTIVITY_PREVIEW_COUNT,
+  THREAD_ACTIVITY_PREVIEW_MAX_CHARS,
+} from "@t3tools/contracts";
 import { applyThreadPullRequestLinkUpdate } from "../sourceControl/threadPullRequests.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 import * as Stream from "effect/Stream";
@@ -918,6 +923,7 @@ type ShellPendingTurnItemRow = PayloadRow & {
 };
 
 type ShellThreadRow = {
+  readonly recent_activity_previews_json: string;
   readonly thread_id: string;
   readonly payload_json: string;
   readonly forked_from_run_source_thread_id: string | null;
@@ -1044,6 +1050,9 @@ const encodeContextTransferPayload = Schema.encodeEffect(
 
 const decodeThreadPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2AppThreadJsonSchema),
+);
+const decodeActivityPreviews = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Array(ThreadActivityPreview)),
 );
 const decodeRunPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2RunJsonSchema),
@@ -1501,6 +1510,24 @@ export function threadShellFromProjection(
     pendingGuestMessageCount: pendingGuestMessageCount(projection.thread.guestShare),
     // Thread detail owns message bodies. Keeping them out of shell rows makes
     // initial hydration and streaming updates independent of transcript size.
+    recentActivityPreviews: projection.visibleTurnItems
+      .map((row) => row.item)
+      .flatMap((item) =>
+        (item.type === "assistant_message" || item.type === "reasoning") && item.text !== ""
+          ? [item]
+          : [],
+      )
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      )
+      .slice(0, THREAD_ACTIVITY_PREVIEW_COUNT)
+      .map((item) => ({
+        kind: item.type === "reasoning" ? ("reasoning" as const) : ("agent" as const),
+        text: Array.from(item.text).slice(0, THREAD_ACTIVITY_PREVIEW_MAX_CHARS).join(""),
+        createdAt: DateTime.formatIso(item.startedAt ?? item.updatedAt),
+      })),
     latestVisibleMessage: null,
     latestUserMessageAt: latestUserMessage?.updatedAt ?? null,
     latestUserAuthoredMessageAt:
@@ -1597,6 +1624,7 @@ function isActivityRunForShell(
 }
 
 type ShellThreadState = {
+  readonly recentActivityPreviews: ReadonlyArray<ThreadActivityPreview>;
   readonly thread: OrchestrationV2ThreadProjection["thread"];
   readonly latestRunId: RunId | null;
   readonly latestRunStatus: OrchestrationV2ShellThreadStatus;
@@ -1776,6 +1804,7 @@ function shellFromState(input: {
     usageLimitResetAt: input.state.usageLimitResetAt,
     pendingRuntimeRequest: input.state.pendingRuntimeRequest,
     pendingGuestMessageCount: pendingGuestMessageCount(input.state.thread.guestShare),
+    recentActivityPreviews: input.state.recentActivityPreviews,
     latestVisibleMessage: null,
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
@@ -5742,6 +5771,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             SELECT
               t.thread_id,
               t.payload_json,
+              (
+                SELECT json_group_array(json_object('kind', kind, 'text', text, 'createdAt', created_at))
+                FROM (
+                  SELECT CASE WHEN preview.type = 'reasoning' THEN 'reasoning' ELSE 'agent' END AS kind,
+                    substr(json_extract(preview.payload_json, '$.text'), 1, ${THREAD_ACTIVITY_PREVIEW_MAX_CHARS}) AS text,
+                    COALESCE(json_extract(preview.payload_json, '$.startedAt'), preview.updated_at) AS created_at
+                  FROM orchestration_v2_projection_turn_items AS preview
+                  LEFT JOIN orchestration_v2_projection_runs AS preview_run ON preview_run.run_id = preview.run_id
+                  WHERE preview.thread_id = t.thread_id
+                    AND preview.type IN ('assistant_message', 'reasoning')
+                    AND json_extract(preview.payload_json, '$.text') <> ''
+                    AND (preview.run_id IS NULL OR preview_run.status <> 'rolled_back')
+                  ORDER BY preview.updated_at DESC, preview.turn_item_id DESC
+                  LIMIT ${THREAD_ACTIVITY_PREVIEW_COUNT}
+                )
+              ) AS recent_activity_previews_json,
               CASE
                 WHEN json_extract(t.payload_json, '$.forkedFrom.type') = 'run'
                   THEN json_extract(t.payload_json, '$.forkedFrom.threadId')
@@ -6410,6 +6455,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         ];
         return {
           thread,
+          recentActivityPreviews: yield* decodeActivityPreviews(row.recent_activity_previews_json),
           latestRunId,
           latestRunStatus,
           latestRunRequestedAt,
