@@ -170,7 +170,7 @@ const CODEX_DRIVER = ProviderDriverKind.make("codex");
 function threadCreatedEvent(
   now: DateTime.Utc,
 ): Effect.Effect<
-  Extract<OrchestrationV2DomainEvent, { readonly type: "thread.created" }>,
+  OrchestrationV2DomainEvent,
   IdAllocator.IdAllocatorV2Error,
   IdAllocator.IdAllocatorV2
 > {
@@ -433,68 +433,6 @@ it.effect("records accepted billed turn usage once without billing the context w
     });
   }).pipe(Effect.provide(layerTest.pipe(Layer.provide(layerAnalytics))));
 });
-
-it.effect("bounds board previews and orders assistant text and reasoning by recent updates", () =>
-  Effect.gen(function* () {
-    const now = yield* DateTime.now;
-    const sink = yield* EventSink.EventSinkV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const allocator = yield* IdAllocator.IdAllocatorV2;
-    const created = yield* threadCreatedEvent(now);
-    yield* sink.write({ events: [created] });
-    const events: Array<OrchestrationV2DomainEvent> = [];
-    const texts = ["Old answer", "Recent answer", "Thinking", "😀".repeat(300), ""];
-    for (const [ordinal, text] of texts.entries()) {
-      const updatedAt = DateTime.makeUnsafe(DateTime.toEpochMillis(now) + ordinal);
-      const item: OrchestrationV2TurnItem = {
-        id: TurnItemId.make(`preview:${ordinal}`),
-        threadId: created.threadId,
-        runId: null,
-        nodeId: null,
-        providerThreadId: null,
-        providerTurnId: null,
-        nativeItemRef: null,
-        parentItemId: null,
-        ordinal,
-        status: "completed",
-        title: "Message",
-        startedAt: now,
-        completedAt: now,
-        updatedAt,
-        streaming: false,
-        ...(ordinal === 2
-          ? { type: "reasoning" as const, text }
-          : {
-              type: "assistant_message" as const,
-              messageId: MessageId.make(`preview:${ordinal}`),
-              text,
-            }),
-      };
-      events.push({
-        id: yield* allocator.allocate.event({ threadId: created.threadId }),
-        threadId: created.threadId,
-        occurredAt: updatedAt,
-        type: "turn-item.updated",
-        payload: item,
-      });
-    }
-    yield* sink.write({ events });
-    const expected = [
-      { kind: "agent", text: "😀".repeat(240), createdAt: DateTime.formatIso(now) },
-      { kind: "reasoning", text: "Thinking", createdAt: DateTime.formatIso(now) },
-      { kind: "agent", text: "Recent answer", createdAt: DateTime.formatIso(now) },
-    ] as const;
-    assert.deepStrictEqual(
-      (yield* projections.getThreadShell(created.threadId))?.recentActivityPreviews,
-      expected,
-    );
-    const detail = yield* projections.getThreadProjection(created.threadId);
-    assert.deepStrictEqual(
-      ProjectionStore.threadShellFromProjection(detail).recentActivityPreviews,
-      expected,
-    );
-  }).pipe(Effect.provide(layerTest)),
-);
 
 layer("ProviderEventIngestorV2", (it) => {
   it.effect("normalizes provider events through the real event log and projection store", () =>

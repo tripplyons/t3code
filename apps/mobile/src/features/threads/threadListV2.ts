@@ -208,8 +208,6 @@ export function resolveThreadListV2Status(
     | "runtime"
     | "blockedOnThreadWait"
   >,
-  /** An enabled scheduled task, such as an agent's monitor, is bound to the thread. */
-  hasActiveScheduledTask = false,
 ): ThreadListV2Status {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return "approval";
@@ -236,7 +234,6 @@ export function resolveThreadListV2Status(
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
   }
-  if (hasActiveScheduledTask) return "waiting";
   return "ready";
 }
 

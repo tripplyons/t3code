@@ -14,10 +14,12 @@ export function BoardNavigation() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const returnHref = useRef("/");
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the return target in step with router navigation, including visits outside the board.
   useEffect(() => {
     if (location.pathname !== "/board") returnHref.current = location.href;
   }, [location.href, location.pathname]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Register the board command bus and window shortcut listener only while the layout is mounted.
   useEffect(() => {
     const run = (command: BoardCommand) => {
       const href = boardDestination(command, location.pathname, returnHref.current);

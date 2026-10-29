@@ -53,6 +53,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   BugIcon,
+  Columns3Icon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -84,6 +85,7 @@ import {
 } from "react";
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
+import { dispatchBoardCommand } from "../boardNavigation";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -1151,6 +1153,20 @@ function OpenCommandPaletteDialog(props: {
   };
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+
+  for (const command of ["board.open", "board.toggle"] as const) {
+    actionItems.push({
+      kind: "action",
+      value: `action:${command}`,
+      searchTerms: ["board", "unsettled", "agents", "status"],
+      title: command === "board.open" ? "Open thread board" : "Toggle thread board",
+      icon: <Columns3Icon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: command,
+      run: async () => {
+        dispatchBoardCommand(command);
+      },
+    });
+  }
 
   if (projects.length > 0) {
     const activeProjectTitle =

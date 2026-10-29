@@ -1,4 +1,5 @@
 import type { ProjectId } from "@t3tools/contracts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { EnvironmentThreadShell } from "./models.ts";
 
@@ -302,7 +303,7 @@ type ThreadBoardStatusInput = Partial<
     | "hasPendingUserInput"
     | "pendingSubagentRequest"
     | "runtime"
-    | "hasActiveScheduledTask"
+    | "pendingBackgroundTasks"
   >
 >;
 
@@ -324,7 +325,7 @@ export function resolveThreadBoardGroup(
     )
   )
     return "working";
-  if (thread.hasActiveScheduledTask) return "working";
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return "working";
   return "idle";
 }
 

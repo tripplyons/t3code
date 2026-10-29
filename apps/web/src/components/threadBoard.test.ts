@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import {
   EnvironmentId,
   ProjectId,
@@ -80,6 +81,8 @@ function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSum
       relationshipToParent: null,
     },
     forkedFrom: null,
+    linkOrigin: null,
+    delegatedFrom: null,
     activeProviderThreadId: null,
     providerInstanceHistory: [],
     pendingBackgroundTasks: [],
@@ -177,10 +180,13 @@ describe("thread board", () => {
     ]);
   });
 
-  it("groups scheduled waiting threads with running threads in the board and sidebar", () => {
+  it("groups pending background work with running threads in the board and sidebar", () => {
+    const pendingBackgroundTasks = [
+      { taskId: "monitor", kind: "monitor" as const, description: "Watch", awaited: true as const },
+    ];
     const rows = [
       thread({ id: ThreadId.make("idle"), createdAt: "2026-09-20T12:00:00.000Z" }),
-      thread({ id: ThreadId.make("waiting"), hasActiveScheduledTask: true, latestRun: completed }),
+      thread({ id: ThreadId.make("waiting"), pendingBackgroundTasks, latestRun: completed }),
       thread({ id: ThreadId.make("running"), runtime: runtime("running") }),
     ];
     expect(resolveThreadBoardColumn(rows[1]!, options)).toBe("working");
@@ -191,17 +197,31 @@ describe("thread board", () => {
     ]);
     expect(
       resolveThreadBoardColumn(
-        thread({ hasActiveScheduledTask: true, hasPendingUserInput: true }),
+        thread({ pendingBackgroundTasks, hasPendingUserInput: true }),
         options,
       ),
     ).toBe("needs-you");
     expect(
       resolveThreadBoardColumn(
-        thread({ hasActiveScheduledTask: true, runtime: runtime("failed") }),
+        thread({ pendingBackgroundTasks, runtime: runtime("failed") }),
         options,
       ),
     ).toBe("needs-you");
   });
+  it("hides delegated work only when its parent is available", () => {
+    const child = thread({ id: ThreadId.make("delegated") });
+    const boardOptions = { now, projectKey: "", serverConfigs: new Map() };
+    expect(buildThreadBoard([child], boardOptions).flatMap((column) => column.threads)).toEqual([
+      child,
+    ]);
+    expect(
+      buildThreadBoard([child], {
+        ...boardOptions,
+        delegatedUnderParent: new Set([threadKey({ environmentId, threadId: child.id })]),
+      }).flatMap((column) => column.threads),
+    ).toEqual([]);
+  });
+
   it("groups completed results and proposed plans with idle threads", () => {
     expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
     expect(resolveThreadBoardColumn(thread({ latestRun: completed }), options)).toBe("idle");
@@ -248,7 +268,7 @@ describe("thread board", () => {
       ),
     ).toBe("needs-you");
   });
-  it("wakes snoozed threads for questions, approvals, and completed work", () => {
+  it("wakes snoozed threads for questions and approvals, but not completed work", () => {
     expect(resolveThreadBoardColumn(thread(snoozed), options)).toBeNull();
     expect(
       resolveThreadBoardColumn(thread({ ...snoozed, hasPendingApprovals: true }), options),
@@ -256,9 +276,9 @@ describe("thread board", () => {
     expect(
       resolveThreadBoardColumn(thread({ ...snoozed, hasPendingUserInput: true }), options),
     ).toBe("needs-you");
-    expect(resolveThreadBoardColumn(thread({ ...snoozed, latestRun: completed }), options)).toBe(
-      "idle",
-    );
+    expect(
+      resolveThreadBoardColumn(thread({ ...snoozed, latestRun: completed }), options),
+    ).toBeNull();
     expect(
       resolveThreadBoardColumn(thread(snoozed), { ...options, now: snoozed.snoozedUntil }),
     ).toBe("idle");

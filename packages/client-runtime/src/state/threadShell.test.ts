@@ -26,7 +26,6 @@ function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environment
   const snapshotAtom = Atom.family((_environmentId: EnvironmentId) =>
     Atom.make<OrchestrationV2ShellSnapshot | null>(v2ShellSnapshot),
   );
-  const scheduledIds = Atom.family((_id: EnvironmentId) => Atom.make<ReadonlyArray<ThreadId>>([]));
   const catalogValueAtom = Atom.make({
     isReady: true,
     entries: new Map(
@@ -49,31 +48,11 @@ function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environment
     registry: AtomRegistry.make(),
     snapshotAtom,
     catalogValueAtom,
-    scheduledIds,
-    threads: createEnvironmentThreadShellAtoms({
-      catalogValueAtom,
-      snapshotAtom,
-      activeScheduledTaskThreadIds: scheduledIds,
-    }),
+    threads: createEnvironmentThreadShellAtoms({ catalogValueAtom, snapshotAtom }),
   };
 }
 
 describe("v2 thread shell lists", () => {
-  it("updates scheduled work in both list and point reads", () => {
-    const { registry, threads, scheduledIds } = makeHarness();
-    const dispose = registry.mount(threads.threadShellsAtom);
-    const ref = { environmentId, threadId: v2ThreadShell.id };
-    expect(registry.get(threads.threadShellsAtom)[0]?.hasActiveScheduledTask).toBe(false);
-    registry.set(scheduledIds(environmentId), [v2ThreadShell.id]);
-    expect(registry.get(threads.threadShellsAtom)[0]?.hasActiveScheduledTask).toBe(true);
-    expect(registry.get(threads.threadShellAtom(ref))?.hasActiveScheduledTask).toBe(true);
-    expect(isThreadWorking({ ...registry.get(threads.threadShellAtom(ref))!, runtime: null })).toBe(
-      true,
-    );
-    registry.set(scheduledIds(environmentId), []);
-    expect(registry.get(threads.threadShellsAtom)[0]?.hasActiveScheduledTask).toBe(false);
-    dispose();
-  });
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {

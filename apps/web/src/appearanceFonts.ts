@@ -8,7 +8,6 @@ import {
   MIN_CODE_FONT_SIZE,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PROMPT_FONT_SIZE,
-  type FontSmoothingMode,
 } from "@t3tools/contracts";
 
 export const DEFAULT_SANS_FONT_STACK =
@@ -66,8 +65,7 @@ export interface AppearanceFontPreferences {
   readonly sizeInterface: number;
   readonly sizePrompt: number;
   readonly sizeCode: number;
-  readonly smoothing: FontSmoothingMode;
-  readonly strokeWidth: number;
+  readonly smoothing: boolean;
 }
 
 /** Always writes sizes: interface size sets the root; prompt and code use pixels to avoid double scaling. */
@@ -95,17 +93,10 @@ export function applyAppearanceFontVariables(
   root.style.setProperty("--font-size-code", `${code}px`);
   root.style.setProperty("--diffs-font-size", `${code}px`);
 
-  // macOS supports only two smoothing modes. A small text stroke gives the
-  // balanced choice an intermediate weight without changing glyph advances.
-  if (preferences.smoothing === "system") {
-    root.style.removeProperty("-webkit-font-smoothing");
-  } else {
+  if (preferences.smoothing) {
     root.style.setProperty("-webkit-font-smoothing", "antialiased");
-  }
-  if (preferences.smoothing === "balanced") {
-    root.style.setProperty("-webkit-text-stroke-width", `${preferences.strokeWidth}px`);
   } else {
-    root.style.removeProperty("-webkit-text-stroke-width");
+    root.style.removeProperty("-webkit-font-smoothing");
   }
 }
 

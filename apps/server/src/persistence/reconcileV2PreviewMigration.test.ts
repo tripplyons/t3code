@@ -9,6 +9,9 @@ import { migrationManifest, runMigrations } from "./Migrations.ts";
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
+import ThreadActivityPreviewsV2 from "./Migrations/065_ThreadActivityPreviewsV2.ts";
+import CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
+import RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 
 const seedPreview = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -27,6 +30,43 @@ const seedPreview = Effect.gen(function* () {
 });
 
 describe("V2 preview upgrade", () => {
+  it.effect.each([65, 66, 67])(
+    "upgrades fork migrations through %s without replaying completed migrations",
+    (through) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 64 });
+        yield* Migrator.make({})({
+          loader: Migrator.fromRecord({
+            "65_ThreadActivityPreviewsV2": ThreadActivityPreviewsV2,
+            ...(through >= 66 ? { "66_CodexUsageNativeTurnIndex": CodexUsageNativeTurnIndex } : {}),
+            ...(through >= 67
+              ? { "67_RepairClientSettlementTimestamps": RepairClientSettlementTimestamps }
+              : {}),
+          }),
+        });
+        yield* sql`UPDATE effect_sql_migrations SET created_at = '2026-10-01 00:00:00' WHERE migration_id >= 65`;
+        const migrated = yield* runMigrations();
+        assert.deepStrictEqual(
+          migrated,
+          migrationManifest.filter(([id]) => id >= through),
+        );
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+        SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
+      `;
+        assert.deepStrictEqual(
+          history.map((row) => [row.migration_id, row.name] as const),
+          migrationManifest,
+        );
+        if (through >= 66) {
+          assert.deepStrictEqual(
+            yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 65`,
+            [{ created_at: "2026-10-01 00:00:00" }],
+          );
+        }
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
   it.effect("upgrades a published preview without replaying V2 or losing import progress", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

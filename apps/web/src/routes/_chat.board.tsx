@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BoardActivityPreviews } from "../components/BoardActivityPreviews";
 import { buildThreadBoard } from "../components/threadBoard";
@@ -15,6 +15,7 @@ import {
 import { isElectron } from "../env";
 import {
   useAllEnvironmentShellsBootstrapped,
+  useDelegatedUnderParent,
   useProjects,
   useServerConfigs,
   useThreadShells,
@@ -24,20 +25,20 @@ import { useThreadJumpHintStore } from "../threadJumpHintStore";
 
 function ThreadBoard() {
   const threads = useThreadShells();
+  const delegatedUnderParent = useDelegatedUnderParent();
   const projects = useProjects();
   const serverConfigs = useServerConfigs();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const { environments } = useEnvironments();
   const [projectKey, setProjectKey] = useState("");
   const [wakeTime, setWakeTime] = useState(Date.now);
-  const columns = useMemo(() => {
-    return buildThreadBoard(threads, {
-      projectKey,
-      serverConfigs,
-      now: new Date(wakeTime).toISOString(),
-    });
-  }, [threads, projectKey, serverConfigs, wakeTime]);
-  // Wake snoozed cards at their deadline without a continuously ticking board.
+  const columns = buildThreadBoard(threads, {
+    projectKey,
+    delegatedUnderParent,
+    serverConfigs,
+    now: new Date(wakeTime).toISOString(),
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the wake timer so snoozed cards return at their deadline without continuous polling.
   useEffect(() => {
     const now = Math.max(wakeTime, Date.now());
     const wakeTimes = threads
@@ -52,13 +53,11 @@ function ThreadBoard() {
   }, [threads, wakeTime]);
   // The sidebar owns the jump order and the shortcuts; cards only mirror its hints.
   const jumpLabelByKey = useThreadJumpHintStore((state) => state.visibleLabelByKey);
-  const projectByKey = useMemo(
-    () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
-    [projects],
+  const projectByKey = new Map(
+    projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
   );
-  const environmentById = useMemo(
-    () => new Map(environments.map((environment) => [environment.environmentId, environment])),
-    [environments],
+  const environmentById = new Map(
+    environments.map((environment) => [environment.environmentId, environment]),
   );
 
   return (
@@ -108,7 +107,7 @@ function ThreadBoard() {
                       <Link
                         to="/$environmentId/$threadId"
                         params={{ environmentId: thread.environmentId, threadId: thread.id }}
-                        className="relative block rounded-lg border bg-background p-3 outline-none hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
+                        className="relative block rounded-lg border bg-background p-3 outline-none hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       >
                         {jumpLabel && (
                           <span
@@ -119,7 +118,7 @@ function ThreadBoard() {
                           </span>
                         )}
                         <div className="break-words text-sm font-medium">{thread.title}</div>
-                        <BoardActivityPreviews previews={thread.recentActivityPreviews} />
+                        <BoardActivityPreviews previews={thread.source.recentActivityPreviews} />
                         <div className="mt-2 break-words text-xs text-muted-foreground">
                           {project?.title ?? "Unknown project"} ·{" "}
                           {environment?.label ?? thread.environmentId}

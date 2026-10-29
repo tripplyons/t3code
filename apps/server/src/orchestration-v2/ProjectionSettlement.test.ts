@@ -343,34 +343,6 @@ it.effect("sql: the user-authored message time ignores agent notifications", () 
   }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect("sql: an enabled scheduled task bound to a thread holds it open", () =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const sql = yield* SqlClient.SqlClient;
-    const insertTask = (taskId: string, threadId: ThreadId, enabled: boolean) => sql`
-      INSERT INTO scheduled_tasks (
-        task_id, title, prompt, enabled, schedule_json, project_id, thread_id,
-        workspace_strategy_json, model_selection_json, runtime_mode, interaction_mode,
-        created_by, creation_source, created_at, updated_at, last_run_status, run_count
-      ) VALUES (
-        ${taskId}, 'Monitor', 'Check progress', ${enabled ? 1 : 0}, '{}',
-        'project:settlement', ${threadId}, '{}', '{}', 'full-access', 'default',
-        'agent', 'provider', ${DateTime.formatIso(old)}, ${DateTime.formatIso(old)}, 'never', 0
-      )
-    `;
-    const monitored = yield* createThread("monitored");
-    yield* createRun(monitored);
-    yield* insertTask("task:monitored", monitored, true);
-    const paused = yield* createThread("paused-monitor");
-    yield* createRun(paused);
-    yield* insertTask("task:paused", paused, false);
-
-    const candidateIds = (yield* store.getSettlementCandidates()).map((thread) => thread.id);
-    assert.notInclude(candidateIds, monitored);
-    assert.include(candidateIds, paused);
-  }).pipe(Effect.provide(layerSql)),
-);
-
 const pullRequestLink = (number: number) => ({
   host: "github.com",
   repository: "owner/repository",

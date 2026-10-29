@@ -99,7 +99,7 @@ describe("V2 client presentation", () => {
   });
 
   it.each([
-    { kinds: ["command"], expected: "idle" },
+    { kinds: ["command"], expected: "completed" },
     { kinds: ["command", "subagent"], expected: "idle" },
     { kinds: ["background_task"], expected: "idle" },
   ] as const)("presents a completed shell with $kinds as $expected", ({ kinds, expected }) => {
@@ -119,6 +119,24 @@ describe("V2 client presentation", () => {
     expect(shell.runtime).toMatchObject({ status: expected, activeRunId: null });
     expect(shell.pendingBackgroundTasks).toEqual(pendingBackgroundTasks);
   });
+
+  it.each(["running", "waiting"] as const)(
+    "preserves shell %s while only commands remain in the roster",
+    (status) => {
+      const runId = RunId.make("run-command");
+      const shell = presentThreadShell(environmentId, {
+        ...v2ThreadShell,
+        latestRunId: runId,
+        activeRunId: runId,
+        status,
+        pendingBackgroundTasks: [{ taskId: "dev-server", kind: "command" }],
+      });
+
+      expect(shell.latestRun?.status).toBe(status);
+      expect(shell.runtime).toMatchObject({ status, activeRunId: runId });
+      expect(shell.pendingBackgroundTasks).toEqual([{ taskId: "dev-server", kind: "command" }]);
+    },
+  );
 
   it("keeps a failed latest run failed while background tasks are still pending", () => {
     const shell = presentThreadShell(environmentId, {
@@ -377,10 +395,10 @@ describe("V2 client presentation", () => {
     };
     expect(
       deriveThreadRuntime({ ...v2Projection, runs: [run], turnItems: [commandItem] }),
-    ).toMatchObject({ status: "idle", activeRunId: null });
+    ).toMatchObject({ status: "waiting", activeRunId: null });
 
     for (const [turnItems, status] of [
-      [[commandItem], "idle"],
+      [[commandItem], "completed"],
       [[backgroundItem], "idle"],
       [[commandItem, backgroundItem], "idle"],
     ] as const) {

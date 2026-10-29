@@ -12,5 +12,16 @@ export const useThreadJumpHintStore = create<{
   setVisibleLabels: (labels: ReadonlyMap<string, string> | null) => void;
 }>((set) => ({
   visibleLabelByKey: EMPTY_LABELS,
-  setVisibleLabels: (labels) => set({ visibleLabelByKey: labels ?? EMPTY_LABELS }),
+  setVisibleLabels: (labels) =>
+    set((state) => {
+      const next = labels ?? EMPTY_LABELS;
+      const previous = state.visibleLabelByKey;
+      if (
+        previous.size === next.size &&
+        [...next].every(([key, label]) => previous.get(key) === label)
+      ) {
+        return state;
+      }
+      return { visibleLabelByKey: next };
+    }),
 }));

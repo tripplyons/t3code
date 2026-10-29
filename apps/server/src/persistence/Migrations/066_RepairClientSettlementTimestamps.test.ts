@@ -9,7 +9,7 @@ import * as EventStore from "../../orchestration-v2/EventStore.ts";
 import * as ProjectionMaintenance from "../../orchestration-v2/ProjectionMaintenance.ts";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import { runMigrations } from "../Migrations.ts";
-import Migration0067 from "./067_RepairClientSettlementTimestamps.ts";
+import Migration0066 from "./066_RepairClientSettlementTimestamps.ts";
 
 const layer = it.layer(
   ProjectionMaintenance.layer.pipe(
@@ -28,7 +28,7 @@ const manualAt = "2026-10-01T00:00:00.000Z";
 const plusSeconds = (iso: string, seconds: number) =>
   DateTime.makeUnsafe(iso).pipe(DateTime.add({ seconds }), DateTime.formatIso);
 
-layer("067_RepairClientSettlementTimestamps", (it) => {
+layer("066_RepairClientSettlementTimestamps", (it) => {
   it.effect("repairs only sweep stamps, preserves overrides, and survives a V2 rebuild", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -314,7 +314,7 @@ layer("067_RepairClientSettlementTimestamps", (it) => {
       `;
       const overridesBefore = yield* overrides;
 
-      yield* runMigrations({ toMigrationInclusive: 67 });
+      yield* runMigrations({ toMigrationInclusive: 66 });
       const legacy = yield* sql`
         SELECT thread_id, settled_override, settled_at FROM projection_threads
         WHERE thread_id LIKE 'sweep-%' ORDER BY thread_id
@@ -359,8 +359,8 @@ layer("067_RepairClientSettlementTimestamps", (it) => {
         sql`SELECT * FROM orchestration_events ORDER BY sequence`,
       ]);
       const repaired = yield* snapshot;
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 67 }), []);
-      yield* Migration0067;
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
+      yield* Migration0066;
       assert.deepEqual(yield* snapshot, repaired);
 
       const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;

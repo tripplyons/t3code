@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThreadActivityPreview } from "@t3tools/contracts";
 
 import {
@@ -20,7 +20,7 @@ export function BoardActivityPreviews({
 }: {
   previews: readonly ThreadActivityPreview[] | undefined;
 }) {
-  const index = useMemo(() => buildBoardPreviewIndex(previews), [previews]);
+  const index = buildBoardPreviewIndex(previews);
   const signature = boardPreviewSignature(index);
   const [rows, setRows] = useState(() => initialBoardPreviewRows(index));
   const [animatedSignature, setAnimatedSignature] = useState(signature);
@@ -31,6 +31,7 @@ export function BoardActivityPreviews({
   // Keyed by signature so a burst restarts the timer instead of settling the
   // newest slide early.
   const settling = rows.some((row) => row.phase !== "steady") ? animatedSignature : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the transition timer so interrupted animations settle only after the latest arrival.
   useEffect(() => {
     if (settling === null) return;
     const timer = window.setTimeout(

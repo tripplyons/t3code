@@ -23,6 +23,19 @@ const shortcut = {
   modKey: true,
 };
 
+it.effect("accepts board commands in custom shortcuts", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decode(ResolvedKeybindingsConfig, [
+      { command: "board.open", shortcut },
+      { command: "board.toggle", shortcut },
+    ]);
+    assert.deepEqual(
+      parsed.map((rule) => rule.command),
+      ["board.open", "board.toggle"],
+    );
+  }),
+);
+
 it.effect("drops resolved rules with commands this build does not know", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(ResolvedKeybindingsConfig, [

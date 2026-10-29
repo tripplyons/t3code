@@ -97,6 +97,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
+import { useThreadJumpHintStore } from "../threadJumpHintStore";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -2840,6 +2841,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
+  const setVisibleJumpLabels = useThreadJumpHintStore((state) => state.setVisibleLabels);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publish the mounted sidebar's shortcut registry so board badges match the targets it handles.
+  useEffect(() => {
+    setVisibleJumpLabels(showJumpHints ? jumpLabelByKey : null);
+  }, [jumpLabelByKey, setVisibleJumpLabels, showJumpHints]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Remove the sidebar's shortcut registry when its keyboard handler unmounts.
+  useEffect(() => () => setVisibleJumpLabels(null), [setVisibleJumpLabels]);
 
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (

@@ -843,11 +843,7 @@ type SidebarThreadStatusInput = Pick<
   | "blockedOnThreadWait"
 >;
 
-export function resolveSidebarThreadStatus(
-  thread: SidebarThreadStatusInput,
-  /** An enabled scheduled task, such as an agent's monitor, is bound to the thread. */
-  hasActiveScheduledTask = false,
-): SidebarThreadStatus {
+export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return "approval";
   }
@@ -873,7 +869,6 @@ export function resolveSidebarThreadStatus(
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
   }
-  if (hasActiveScheduledTask) return "waiting";
   return "ready";
 }
 
@@ -1077,8 +1072,6 @@ export function resolveWorkingStartedAt(
 
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
-  /** An enabled scheduled task, such as an agent's monitor, is bound to the thread. */
-  hasActiveScheduledTask?: boolean;
 }): ThreadStatusPill | null {
   const { thread } = input;
 
@@ -1136,8 +1129,7 @@ export function resolveThreadStatusPill(input: {
 
   if (
     (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
-    input.hasActiveScheduledTask === true
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
   ) {
     return {
       label: "Waiting",

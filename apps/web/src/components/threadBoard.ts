@@ -26,6 +26,7 @@ export function buildThreadBoard(
   options: {
     now: string;
     projectKey: string;
+    delegatedUnderParent?: ReadonlySet<string>;
     serverConfigs: ReadonlyMap<
       EnvironmentId,
       {
@@ -47,6 +48,7 @@ export function buildThreadBoard(
   const visibleThreads = filterSidebarV2VisibleThreads(
     threads,
     options.projectKey ? new Set([options.projectKey]) : null,
+    options.delegatedUnderParent ?? new Set(),
   ).filter((thread) => {
     const capabilities = options.serverConfigs.get(thread.environmentId)?.environment.capabilities;
     return capabilities?.threadSettlement !== true || thread.settledOverride !== "settled";

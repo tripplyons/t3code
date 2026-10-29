@@ -14,10 +14,11 @@ export const reconcileV2PreviewMigration = Effect.fn("reconcileV2PreviewMigratio
         SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
       `;
       if (tables.length === 0) return [];
-      // This fork recorded its idempotent preview index at 57, 62, then 63, before
-      // upstream claimed those ids. Free them so upstream's migrations run; the
-      // index migration reruns at its new id.
-      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id IN (57, 62, 63) AND name = 'ThreadActivityPreviewsV2'`;
+      // The fork inserted a preview index before upstream's migrations. Preserve
+      // completed non-idempotent migrations by moving their ledger entries, not replaying them.
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id IN (57, 62, 63, 65) AND name = 'ThreadActivityPreviewsV2'`;
+      yield* sql`UPDATE effect_sql_migrations SET migration_id = 65 WHERE migration_id = 66 AND name = 'CodexUsageNativeTurnIndex'`;
+      yield* sql`UPDATE effect_sql_migrations SET migration_id = 66 WHERE migration_id = 67 AND name = 'RepairClientSettlementTimestamps'`;
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
         SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 53
       `;
