@@ -1,5 +1,4 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { resolveThreadBoardGroup } from "@t3tools/client-runtime/state/thread-sort";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -13,18 +12,12 @@ import { useRef, useState, type RefObject } from "react";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useClientSettings } from "../hooks/useSettings";
 import { useThreadActions } from "../hooks/useThreadActions";
-import { newMessageId } from "../lib/utils";
-import { buildPlanImplementationPrompt } from "../proposedPlan";
-import { findLatestProposedPlan, hasActionableProposedPlan } from "../session-logic";
 import { useQuietThreadProjection } from "../state/entities";
-import { threadEnvironment } from "../state/threads";
-import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import type { SidebarThreadSummary } from "../types";
 import { BoardActivityPreviews } from "./BoardActivityPreviews";
+import ChatView from "./ChatView";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
-import { ComposerBanner } from "./chat/ComposerBanner";
 import { DEFAULT_APPROVAL_OPTIONS } from "./chat/ComposerPendingApprovalActions";
-import { ComposerPendingUserInputPanel } from "./chat/ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "./Sidebar.snooze";
@@ -33,7 +26,6 @@ import { useBoardShortcuts } from "./useBoardShortcuts";
 import { Button } from "./ui/button";
 import { Kbd } from "./ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./ui/menu";
-import { Textarea } from "./ui/textarea";
 import { toastManager } from "./ui/toast";
 
 function reportFailure(result: AtomCommandResult<unknown, unknown>, title: string) {
@@ -68,18 +60,13 @@ export function BoardFocusCard({
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const projection = useQuietThreadProjection(threadRef)?.projection ?? null;
   const { settleThread, snoozeThread } = useThreadActions();
-  const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
-    reportFailure: false,
-  });
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const [reply, setReply] = useState("");
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozePresets, setSnoozePresets] = useState<ReadonlyArray<SnoozePreset>>([]);
-  const replyRef = useRef<HTMLTextAreaElement>(null);
-  // The board has no composer; free-text answers go through the reply box instead.
+  const composerHostRef = useRef<HTMLDivElement>(null);
+  // Approvals are answered here; the embedded composer owns questions and plans.
   const composerRef: RefObject<ChatComposerHandle | null> = useRef(null);
   const promptRef = useRef("");
   const pending = usePendingThreadRequests({
@@ -93,57 +80,16 @@ export function BoardFocusCard({
     composerRef,
     setThreadError: (_threadId, message) => setError(message),
   });
-  const activeQuestion = pending.activePendingProgress?.activeQuestion ?? null;
   const approval = pending.activePendingApproval;
+  const cwd = project
+    ? projectScriptCwd({
+        project: { cwd: project.workspaceRoot },
+        worktreePath: thread.worktreePath,
+      })
+    : undefined;
   const approvalChoices = boardApprovalChoices(approval?.options ?? DEFAULT_APPROVAL_OPTIONS);
   const approvalResponding =
     approval !== null && pending.respondingRequestIds.includes(approval.requestId);
-  const working = resolveThreadBoardGroup(thread) === "working";
-  const proposedPlan =
-    thread.hasActionableProposedPlan && !working
-      ? findLatestProposedPlan(projection, thread.latestRun?.runId)
-      : null;
-  const canImplementPlan = hasActionableProposedPlan(proposedPlan);
-  const answeringQuestion = activeQuestion !== null && activeQuestion.allowCustomAnswer !== false;
-  const replyValue = answeringQuestion
-    ? (pending.activePendingProgress?.customAnswer ?? "")
-    : reply;
-  const canReply = answeringQuestion || pending.activePendingUserInput === null;
-
-  const startTurn = async (text: string, plan?: { id: NonNullable<typeof proposedPlan>["id"] }) => {
-    setSending(true);
-    setError(null);
-    const result = await startThreadTurn({
-      environmentId: thread.environmentId,
-      input: {
-        threadId: thread.id,
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-        modelSelection: thread.modelSelection,
-        runtimeMode: thread.runtimeMode,
-        interactionMode: plan ? "default" : thread.interactionMode,
-        ...(plan ? { sourceProposedPlan: { threadId: thread.id, planId: plan.id } } : {}),
-        // Like the composer: start when idle, otherwise steer or queue behind the active run.
-        dispatchMode: "auto",
-      },
-    });
-    setSending(false);
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      const failure = squashAtomCommandFailure(result);
-      setError(failure instanceof Error ? failure.message : "Failed to send the reply.");
-      return false;
-    }
-    return result._tag === "Success";
-  };
-
-  const submitReply = async () => {
-    if (answeringQuestion) {
-      pending.onAdvanceActivePendingUserInput();
-      return;
-    }
-    const text = reply.trim();
-    if (!text || sending || !canReply) return;
-    if (await startTurn(text)) setReply("");
-  };
 
   const settle = async () => reportFailure(await settleThread(threadRef), "Could not mark done");
   const snooze = async (preset: Pick<SnoozePreset, "snoozedUntil"> | null | undefined) => {
@@ -166,14 +112,13 @@ export function BoardFocusCard({
     if (key === "enter") openThread();
     else if (key === "e" && settlementSupported) void settle();
     else if (key === "l" && snoozable) openSnooze(true);
-    else if (key === "r" && canReply) replyRef.current?.focus();
-    else if (approval && approval.responseCapability === "live" && /^[1-9]$/.test(key)) {
+    else if (key === "r") {
+      composerHostRef.current?.querySelector<HTMLElement>("[contenteditable='true']")?.focus();
+    } else if (approval && approval.responseCapability === "live" && /^[1-9]$/.test(key)) {
       const choice = approvalChoices[Number(key) - 1];
       if (!choice) return;
       if (!approvalResponding)
         void pending.onRespondToApproval(approval.requestId, choice.decision);
-    } else if (key === "1" && canImplementPlan && proposedPlan) {
-      void startTurn(buildPlanImplementationPrompt(proposedPlan.planMarkdown), proposedPlan);
     } else return;
     event.preventDefault();
   });
@@ -189,40 +134,17 @@ export function BoardFocusCard({
       </header>
 
       <div>
-        <BoardActivityPreviews previews={thread.source.recentActivityPreviews} />
+        <BoardActivityPreviews
+          previews={thread.source.recentActivityPreviews}
+          cwd={cwd}
+          threadRef={threadRef}
+        />
         {thread.runtime?.status === "failed" && thread.runtime.lastError ? (
           <p className="mt-2 break-words text-sm text-destructive-foreground">
             {thread.runtime.lastError}
           </p>
         ) : null}
       </div>
-
-      {pending.pendingUserInputs.length > 0 ? (
-        <ComposerBanner.Root variant="info">
-          <ComposerPendingUserInputPanel
-            pendingUserInputs={pending.pendingUserInputs}
-            cwd={
-              project
-                ? projectScriptCwd({
-                    project: { cwd: project.workspaceRoot },
-                    worktreePath: thread.worktreePath,
-                  })
-                : undefined
-            }
-            threadRef={threadRef}
-            respondingRequestIds={
-              pending.activePendingIsResponding && pending.activePendingUserInput
-                ? [...pending.respondingRequestIds, pending.activePendingUserInput.requestId]
-                : pending.respondingRequestIds
-            }
-            answers={pending.activePendingDraftAnswers}
-            questionIndex={pending.activePendingQuestionIndex}
-            onToggleOption={pending.onSelectActivePendingUserInputOption}
-            onAdvance={pending.onAdvanceActivePendingUserInputStable}
-            onDismiss={pending.onDismissUserInput}
-          />
-        </ComposerBanner.Root>
-      ) : null}
 
       {approval ? (
         <section aria-label="Approval" className="rounded-lg border p-3 text-sm">
@@ -257,56 +179,6 @@ export function BoardFocusCard({
         </section>
       ) : null}
 
-      {canImplementPlan && proposedPlan ? (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            disabled={sending}
-            onClick={() =>
-              void startTurn(buildPlanImplementationPrompt(proposedPlan.planMarkdown), proposedPlan)
-            }
-          >
-            Implement plan
-          </Button>
-          <Kbd>1</Kbd>
-        </div>
-      ) : null}
-
-      {canReply ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitReply();
-          }}
-        >
-          <Textarea
-            ref={replyRef}
-            size="sm"
-            value={replyValue}
-            disabled={sending}
-            aria-label={answeringQuestion ? "Your answer" : "Reply"}
-            placeholder={
-              answeringQuestion ? "Type your own answer…" : "Reply to the agent… (Enter to send)"
-            }
-            onChange={(event) => {
-              if (answeringQuestion && activeQuestion) {
-                pending.onChangeActivePendingUserInputCustomAnswer(
-                  activeQuestion.id,
-                  event.target.value,
-                );
-              } else {
-                setReply(event.target.value);
-              }
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") event.currentTarget.blur();
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              void submitReply();
-            }}
-          />
-        </form>
-      ) : null}
       {error ? <p className="text-sm text-destructive-foreground">{error}</p> : null}
 
       <footer className="flex flex-wrap items-center gap-2">
@@ -356,6 +228,30 @@ export function BoardFocusCard({
           Open thread <Kbd>↵</Kbd>
         </Button>
       </footer>
+
+      <div
+        ref={composerHostRef}
+        onKeyDownCapture={(event) => {
+          // Esc in the editor hands the keyboard back to the board unless it is closing a
+          // composer menu. ProseMirror prevents every Escape, so defaultPrevented can't tell.
+          const target = event.target;
+          if (
+            event.key === "Escape" &&
+            target instanceof HTMLElement &&
+            target.isContentEditable &&
+            !document.querySelector("[data-composer-command-drawer], [data-composer-stash-drawer]")
+          ) {
+            target.blur();
+          }
+        }}
+      >
+        <ChatView
+          environmentId={thread.environmentId}
+          threadId={thread.id}
+          routeKind="server"
+          composerOnly
+        />
+      </div>
     </article>
   );
 }

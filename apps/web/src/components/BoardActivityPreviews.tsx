@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ThreadActivityPreview } from "@t3tools/contracts";
+import type { ScopedThreadRef, ThreadActivityPreview } from "@t3tools/contracts";
 
+import ChatMarkdown from "./ChatMarkdown";
 import {
   BOARD_PREVIEW_TRANSITION_MS,
   advanceBoardPreviewRows,
@@ -17,8 +18,12 @@ import {
  */
 export function BoardActivityPreviews({
   previews,
+  cwd,
+  threadRef,
 }: {
   previews: readonly ThreadActivityPreview[] | undefined;
+  cwd: string | undefined;
+  threadRef: ScopedThreadRef;
 }) {
   const index = buildBoardPreviewIndex(previews);
   const signature = boardPreviewSignature(index);
@@ -50,13 +55,19 @@ export function BoardActivityPreviews({
         return (
           <div key={row.key} data-phase={row.phase} className="board-preview-row grid">
             <div className="min-h-0 overflow-hidden">
-              <div className="board-preview-row-body mt-2 text-sm">
-                <p className="line-clamp-2 whitespace-normal break-words">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {preview.kind === "reasoning" ? "Thinking" : "Agent"}:
-                  </span>{" "}
-                  {preview.text}
+              <div className="board-preview-row-body mt-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {preview.kind === "reasoning" ? "Thinking" : "Agent"}
                 </p>
+                <div className="max-h-40 overflow-hidden">
+                  <ChatMarkdown
+                    text={preview.text}
+                    cwd={cwd}
+                    threadRef={threadRef}
+                    environmentId={threadRef.environmentId}
+                    parseRawHtml={false}
+                  />
+                </div>
               </div>
             </div>
           </div>

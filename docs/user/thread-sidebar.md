@@ -59,10 +59,12 @@ connected environments. Snoozed, settled, and archived threads are hidden. Snooz
 threads return when they wake.
 
 Select a thread to see what its agent did and what it needs, and act without
-leaving the board. Press `J` and `K` to move, the number beside a choice to approve,
-decline, or answer a question, and `1` to implement a ready plan. Press
-`R` to reply, `E` to settle, `L` to snooze, `Z` to undo, and `Enter` to open the
-thread. A thread waiting on you can't be snoozed. Answer it or settle it instead.
+leaving the board. The card includes the thread's full composer, so you can reply,
+attach or drop files, and implement a ready plan there. Press `J` and `K` to move,
+and the number beside a choice to approve, decline, or answer a question. Press
+`R` to focus the composer and `Esc` to leave it, `E` to settle, `L` to snooze, `Z`
+to undo, and `Enter` to open the thread. A thread waiting on you can't be snoozed.
+Answer it or settle it instead.
 
 ## Pin and reorder threads
 
