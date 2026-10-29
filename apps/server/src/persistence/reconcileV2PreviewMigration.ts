@@ -19,6 +19,7 @@ export const reconcileV2PreviewMigration = Effect.fn("reconcileV2PreviewMigratio
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id IN (57, 62, 63, 65) AND name = 'ThreadActivityPreviewsV2'`;
       yield* sql`UPDATE effect_sql_migrations SET migration_id = 65 WHERE migration_id = 66 AND name = 'CodexUsageNativeTurnIndex'`;
       yield* sql`UPDATE effect_sql_migrations SET migration_id = 66 WHERE migration_id = 67 AND name = 'RepairClientSettlementTimestamps'`;
+      yield* sql`UPDATE effect_sql_migrations SET migration_id = 67 WHERE migration_id = 68 AND name = 'WebhookDedupe'`;
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
         SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 53
       `;

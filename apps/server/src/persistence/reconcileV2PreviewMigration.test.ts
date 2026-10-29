@@ -12,6 +12,7 @@ import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
 import ThreadActivityPreviewsV2 from "./Migrations/065_ThreadActivityPreviewsV2.ts";
 import CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
+import WebhookDedupe from "./Migrations/067_WebhookDedupe.ts";
 
 const seedPreview = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -30,7 +31,7 @@ const seedPreview = Effect.gen(function* () {
 });
 
 describe("V2 preview upgrade", () => {
-  it.effect.each([65, 66, 67])(
+  it.effect.each([65, 66, 67, 68])(
     "upgrades fork migrations through %s without replaying completed migrations",
     (through) =>
       Effect.gen(function* () {
@@ -43,6 +44,7 @@ describe("V2 preview upgrade", () => {
             ...(through >= 67
               ? { "67_RepairClientSettlementTimestamps": RepairClientSettlementTimestamps }
               : {}),
+            ...(through >= 68 ? { "68_WebhookDedupe": WebhookDedupe } : {}),
           }),
         });
         yield* sql`UPDATE effect_sql_migrations SET created_at = '2026-10-01 00:00:00' WHERE migration_id >= 65`;
@@ -62,6 +64,12 @@ describe("V2 preview upgrade", () => {
         if (through >= 66) {
           assert.deepStrictEqual(
             yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 65`,
+            [{ created_at: "2026-10-01 00:00:00" }],
+          );
+        }
+        if (through >= 68) {
+          assert.deepStrictEqual(
+            yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 67`,
             [{ created_at: "2026-10-01 00:00:00" }],
           );
         }
