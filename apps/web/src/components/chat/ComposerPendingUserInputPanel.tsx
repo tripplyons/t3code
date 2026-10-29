@@ -145,9 +145,18 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   };
 
   const selectOptionFromShortcut = useEffectEvent(handleOptionSelection);
+  const advanceFromShortcut = useEffectEvent(() => {
+    if (!progress.canAdvance) return false;
+    if (autoAdvanceTimerRef.current !== null) {
+      window.clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    advance();
+    return true;
+  });
   const backgroundThread = use(BackgroundThreadContext);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for digit shortcuts while a question is answerable
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for digit and Enter shortcuts while a question is answerable
   useEffect(() => {
     if (!activeQuestion || responseDisabled || isCollapsed || backgroundThread) return;
     const handler = (event: globalThis.KeyboardEvent) => {
@@ -160,6 +169,19 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         target instanceof HTMLElement &&
         target.closest('[contenteditable]:not([contenteditable="false"])')
       ) {
+        return;
+      }
+      if (event.key === "Enter") {
+        // Enter submits the answer, even from a focused option; Space still toggles one.
+        if (event.repeat || event.isComposing) return;
+        if (
+          target instanceof Element &&
+          target.closest("button, a, [role='button']") &&
+          !target.closest("[data-pending-user-input-option]")
+        ) {
+          return;
+        }
+        if (advanceFromShortcut()) event.preventDefault();
         return;
       }
       const digit = Number.parseInt(event.key, 10);
@@ -286,6 +308,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     key={`${activeQuestion.id}:${optionValue}`}
                     type="button"
                     aria-pressed={isSelected}
+                    data-pending-user-input-option
                     disabled={disabled || isResponding}
                     onClick={() => {
                       handleOptionSelection(activeQuestion.id, optionValue);

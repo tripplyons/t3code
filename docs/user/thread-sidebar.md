@@ -61,9 +61,10 @@ threads return when they wake.
 Select a thread to see what its agent did and what it needs, and act without
 leaving the board. The card includes the thread's full composer, so you can reply,
 attach or drop files, and implement a ready plan there. Press `J` and `K` to move,
-and the number beside a choice to approve, decline, or answer a question. Press
-`R` to focus the composer and `Esc` to leave it, `E` to settle, `L` to snooze, `Z`
-to undo, and `Enter` to open the thread. A thread waiting on you can't be snoozed.
+and the number beside a choice to approve, decline, or answer a question. When a
+question allows several choices, the numbers toggle them and `Enter` submits the
+answer. Press `R` to focus the composer and `Esc` to leave it, `E` to settle, `L`
+to snooze, `Z` to undo, and `Enter` to open the thread. A thread waiting on you can't be snoozed.
 Answer it or settle it instead.
 
 ## Pin and reorder threads

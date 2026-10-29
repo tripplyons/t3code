@@ -7,8 +7,9 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import { makeThreadRequestsResolvedAnnouncer } from "@t3tools/client-runtime/state/thread-requests";
-import { useLayoutEffect, useRef, type ComponentProps } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 
 vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
   ...(await importOriginal()),
@@ -16,7 +17,9 @@ vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
 }));
 
 import { act, fakeTimers, render } from "../../../test/render";
+import type { PendingUserInputDraftAnswer } from "../../pendingUserInput";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
+import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./usePendingThreadRequests";
 
 const threadRef = { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") };
@@ -187,4 +190,71 @@ it("isolates drafts by environment, thread and request and discards only resolve
       index === 0 ? undefined : `Answer ${index}`,
     );
   }
+});
+
+function MultiSelectPanel({ onAdvance }: { onAdvance: () => void }) {
+  const [answers, setAnswers] = useState<Record<string, PendingUserInputDraftAnswer>>({});
+  return (
+    <ComposerPendingUserInputPanel
+      pendingUserInputs={[
+        {
+          ...prompt,
+          questions: [
+            {
+              id: "checks",
+              header: "Checks",
+              question: "Which checks?",
+              options: [
+                { label: "Lint", description: "Lint" },
+                { label: "Types", description: "Types" },
+                { label: "Tests", description: "Tests" },
+              ],
+              multiSelect: true,
+            },
+          ],
+        },
+      ]}
+      cwd={undefined}
+      threadRef={threadRef}
+      respondingRequestIds={[]}
+      answers={answers}
+      questionIndex={0}
+      onToggleOption={(questionId, value) =>
+        setAnswers((current) => {
+          const selected = current[questionId]?.selectedOptionValues ?? [];
+          return {
+            ...current,
+            [questionId]: {
+              selectedOptionValues: selected.includes(value)
+                ? selected.filter((entry) => entry !== value)
+                : [...selected, value],
+            },
+          };
+        })
+      }
+      onAdvance={onAdvance}
+      onDismiss={() => {}}
+    />
+  );
+}
+
+it("submits a multi-select answer on Enter once an option is chosen, even from a focused option", async () => {
+  const onAdvance = vi.fn();
+  await using screen = await render(<MultiSelectPanel onAdvance={onAdvance} />);
+  await userEvent.keyboard("{Enter}");
+  expect(onAdvance).not.toHaveBeenCalled();
+
+  await userEvent.keyboard("13");
+  await expect
+    .element(screen.getByRole("button", { name: /Tests/ }))
+    .toHaveAttribute("aria-pressed", "true");
+  await userEvent.keyboard("{Enter}");
+  expect(onAdvance).toHaveBeenCalledTimes(1);
+
+  await userEvent.click(screen.getByRole("button", { name: /Types/ }));
+  await userEvent.keyboard("{Enter}");
+  expect(onAdvance).toHaveBeenCalledTimes(2);
+  await expect
+    .element(screen.getByRole("button", { name: /Types/ }))
+    .toHaveAttribute("aria-pressed", "true");
 });
