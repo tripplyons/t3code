@@ -116,8 +116,6 @@ function ThreadBoard() {
     select(next);
     return true;
   };
-  const focusComposer = () =>
-    document.querySelector<HTMLElement>("[data-board-composer] [contenteditable='true']")?.focus();
   useBoardShortcuts((key, event) => {
     if (key === "z") {
       if (!undoLatestThreadAction()) return;
@@ -125,8 +123,6 @@ function ThreadBoard() {
       if (!move(1)) return;
     } else if (key === "k" || key === "arrowup") {
       if (!move(-1)) return;
-    } else if (key === "r" && selected) {
-      focusComposer();
     } else return;
     event.preventDefault();
   });
@@ -253,9 +249,6 @@ function ThreadBoard() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => move(-1)}>
               Previous <Kbd>K</Kbd>
-            </Button>
-            <Button size="sm" variant="outline" disabled={!selected} onClick={focusComposer}>
-              Reply <Kbd>R</Kbd>
             </Button>
             <Button size="sm" variant="outline" onClick={() => undoLatestThreadAction()}>
               Undo <Kbd>Z</Kbd>

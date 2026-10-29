@@ -66,6 +66,7 @@ export function BoardFocusCard({
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozePresets, setSnoozePresets] = useState<ReadonlyArray<SnoozePreset>>([]);
   // Approvals are answered here; the embedded composer owns questions and plans.
+  const composerHostRef = useRef<HTMLDivElement>(null);
   const composerRef: RefObject<ChatComposerHandle | null> = useRef(null);
   const promptRef = useRef("");
   const pending = usePendingThreadRequests({
@@ -101,6 +102,8 @@ export function BoardFocusCard({
     }
     setSnoozeOpen(open);
   };
+  const focusComposer = () =>
+    composerHostRef.current?.querySelector<HTMLElement>("[contenteditable='true']")?.focus();
   const openThread = () =>
     void navigate({
       to: "/$environmentId/$threadId",
@@ -111,6 +114,7 @@ export function BoardFocusCard({
     if (key === "enter") openThread();
     else if (key === "e" && settlementSupported) void settle();
     else if (key === "l" && snoozable) openSnooze(true);
+    else if (key === "r") focusComposer();
     else if (approval && approval.responseCapability === "live" && /^[1-9]$/.test(key)) {
       const choice = approvalChoices[Number(key) - 1];
       if (!choice) return;
@@ -212,6 +216,9 @@ export function BoardFocusCard({
             </MenuPopup>
           </Menu>
         ) : null}
+        <Button size="sm" variant="outline" onClick={focusComposer}>
+          Reply <Kbd>R</Kbd>
+        </Button>
         <Button
           size="sm"
           variant="outline"
@@ -227,7 +234,7 @@ export function BoardFocusCard({
       </footer>
 
       <div
-        data-board-composer
+        ref={composerHostRef}
         onKeyDownCapture={(event) => {
           // Esc in the editor hands the keyboard back to the board unless it is closing a
           // composer menu. ProseMirror prevents every Escape, so defaultPrevented can't tell.
