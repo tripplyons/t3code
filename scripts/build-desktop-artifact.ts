@@ -73,6 +73,7 @@ const WorkspaceConfig = Schema.Struct({
   overrides: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   patchedDependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   allowBuilds: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  minimumReleaseAgeExclude: Schema.optional(Schema.Array(Schema.String)),
 });
 type WorkspaceConfig = typeof WorkspaceConfig.Type;
 
@@ -84,6 +85,8 @@ const StageWorkspaceConfig = Schema.Struct({
   }),
   // pnpm 11 reads build approvals only from pnpm-workspace.yaml; omission fails staged lifecycle installs.
   allowBuilds: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  // Staged installs resolve from the registry, so they need the repo's release-age exclusions.
+  minimumReleaseAgeExclude: Schema.optional(Schema.Array(Schema.String)),
   patchedDependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   overrides: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   packageExtensions: Schema.optional(
@@ -1570,10 +1573,12 @@ export function createStageWorkspaceConfig(input: {
   readonly platform: typeof BuildPlatform.Type;
   readonly arch: typeof BuildArch.Type;
   readonly allowBuilds?: Record<string, boolean>;
+  readonly minimumReleaseAgeExclude?: ReadonlyArray<string>;
   readonly patchedDependencies?: Record<string, string>;
   readonly overrides?: Record<string, string>;
 }): StageWorkspaceConfig {
-  const { platform, arch, allowBuilds, patchedDependencies, overrides } = input;
+  const { platform, arch, allowBuilds, minimumReleaseAgeExclude, patchedDependencies, overrides } =
+    input;
   const hostOs = platform === "mac" ? "darwin" : platform === "win" ? "win32" : "linux";
   const hostCpu = arch === "universal" ? ["arm64", "x64"] : [arch];
   // Linux AppImages require glibc native optional dependencies; tell pnpm explicitly.
@@ -1592,6 +1597,9 @@ export function createStageWorkspaceConfig(input: {
   return {
     supportedArchitectures,
     ...(allowBuilds && Object.keys(allowBuilds).length > 0 ? { allowBuilds } : {}),
+    ...(minimumReleaseAgeExclude && minimumReleaseAgeExclude.length > 0
+      ? { minimumReleaseAgeExclude }
+      : {}),
     ...(patchedDependencies && Object.keys(patchedDependencies).length > 0
       ? { patchedDependencies }
       : {}),
@@ -3076,6 +3084,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
   readonly runtimeExternalDependencies: Record<string, string>;
   readonly fffNodeVersion: string;
   readonly allowBuilds: Record<string, boolean>;
+  readonly minimumReleaseAgeExclude: ReadonlyArray<string>;
   readonly patchedDependencies: Record<string, string>;
   readonly overrides: Record<string, string>;
   readonly asarPath: string;
@@ -3113,6 +3122,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
       platform: "win",
       arch: input.arch,
       allowBuilds: input.allowBuilds,
+      minimumReleaseAgeExclude: input.minimumReleaseAgeExclude,
       patchedDependencies: sidecarPatchedDependencies,
       overrides: input.overrides,
     }),
@@ -3584,6 +3594,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const workspaceOverrides = workspaceConfig.overrides ?? {};
   const workspacePatchedDependencies = workspaceConfig.patchedDependencies ?? {};
   const workspaceAllowBuilds = workspaceConfig.allowBuilds ?? {};
+  const workspaceMinimumReleaseAgeExclude = workspaceConfig.minimumReleaseAgeExclude ?? [];
 
   const platformConfig = PLATFORM_CONFIG[options.platform];
   if (!platformConfig) {
@@ -3894,6 +3905,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     platform: options.platform,
     arch: options.arch,
     allowBuilds: workspaceAllowBuilds,
+    minimumReleaseAgeExclude: workspaceMinimumReleaseAgeExclude,
     patchedDependencies: stagePatchedDependencies,
     overrides: resolvedOverrides,
   });
@@ -3929,6 +3941,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       runtimeExternalDependencies: resolvedServerRuntimeExternalDependencies,
       fffNodeVersion: serverPackageJson.dependencies["@ff-labs/fff-node"],
       allowBuilds: workspaceAllowBuilds,
+      minimumReleaseAgeExclude: workspaceMinimumReleaseAgeExclude,
       patchedDependencies: workspacePatchedDependencies,
       overrides: resolvedOverrides,
       asarPath: windowsServerAsarPath,

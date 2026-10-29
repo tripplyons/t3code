@@ -26,6 +26,7 @@ import {
   BundleNotSelfContainedError,
   BuildCommandFailedError,
   parseWslRuntimeArchiveMembers,
+  createStageWorkspaceConfig,
   readWorkspaceConfig,
   createBuildConfig,
   DESKTOP_FILE_EXCLUSIONS,
@@ -561,6 +562,19 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           `allowBuilds names a missing tarball: ${key}`,
         );
       }
+    }),
+  );
+
+  it.effect("carries the repo release-age exclusions into staged installs", () =>
+    Effect.gen(function* () {
+      const { minimumReleaseAgeExclude = [] } = yield* readWorkspaceConfig();
+      assert.isNotEmpty(minimumReleaseAgeExclude);
+      const stage = createStageWorkspaceConfig({
+        platform: "mac",
+        arch: "arm64",
+        minimumReleaseAgeExclude,
+      });
+      assert.deepStrictEqual(stage.minimumReleaseAgeExclude, minimumReleaseAgeExclude);
     }),
   );
 
