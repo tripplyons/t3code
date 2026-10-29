@@ -105,7 +105,7 @@ export function BoardFocusCard({
   const replyValue = answeringQuestion
     ? (pending.activePendingProgress?.customAnswer ?? "")
     : reply;
-  const canReply = answeringQuestion || (!working && pending.activePendingUserInput === null);
+  const canReply = answeringQuestion || pending.activePendingUserInput === null;
 
   const startTurn = async (text: string, plan?: { id: NonNullable<typeof proposedPlan>["id"] }) => {
     setSending(true);
@@ -119,7 +119,8 @@ export function BoardFocusCard({
         runtimeMode: thread.runtimeMode,
         interactionMode: plan ? "default" : thread.interactionMode,
         ...(plan ? { sourceProposedPlan: { threadId: thread.id, planId: plan.id } } : {}),
-        dispatchMode: "start",
+        // Like the composer: start when idle, otherwise steer or queue behind the active run.
+        dispatchMode: "auto",
       },
     });
     setSending(false);

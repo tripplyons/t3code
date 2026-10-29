@@ -2,6 +2,7 @@ import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { buildBoardPreviewIndex } from "../components/BoardActivityPreviews.logic";
 import { BoardFocusCard } from "../components/BoardFocusCard";
@@ -52,7 +53,7 @@ function ThreadBoard() {
   const [projectKey, setProjectKey] = useState("");
   const [wakeTime, setWakeTime] = useState(Date.now);
   const [openSections, setOpenSections] = useState<ReadonlySet<BoardSection>>(
-    () => new Set(["inbox"]),
+    () => new Set(["inbox", "working", "idle"]),
   );
   const [selection, setSelection] = useState<{ key: string; index: number } | null>(null);
   const now = new Date(wakeTime).toISOString();
@@ -91,7 +92,17 @@ function ThreadBoard() {
 
   const select = (thread: SidebarThreadSummary) => {
     const key = rowKey(thread);
-    setSelection({ key, index: rows.findIndex((row) => rowKey(row) === key) });
+    const section = sections.find((candidate) => candidate.threads.includes(thread));
+    let visibleRows = rows;
+    if (section && !openSections.has(section.id)) {
+      const nextOpen = new Set(openSections).add(section.id);
+      visibleRows = sections.flatMap((candidate) =>
+        nextOpen.has(candidate.id) ? candidate.threads : [],
+      );
+      // Commit the expanded section now so its row exists to scroll to.
+      flushSync(() => setOpenSections(nextOpen));
+    }
+    setSelection({ key, index: visibleRows.findIndex((row) => rowKey(row) === key) });
     document.querySelector(`[data-board-row="${CSS.escape(key)}"]`)?.scrollIntoView({
       block: "nearest",
     });
@@ -101,8 +112,9 @@ function ThreadBoard() {
       if (!undoLatestThreadAction()) return;
     } else if (key === "j" || key === "arrowdown" || key === "k" || key === "arrowup") {
       const step = key === "j" || key === "arrowdown" ? 1 : -1;
-      const index = selected ? rows.indexOf(selected) : -1;
-      const next = rows[Math.min(Math.max(index + step, 0), rows.length - 1)];
+      const allRows = sections.flatMap((section) => section.threads);
+      const index = selected ? allRows.indexOf(selected) : -1;
+      const next = allRows[Math.min(Math.max(index + step, 0), allRows.length - 1)];
       if (!next) return;
       select(next);
     } else return;

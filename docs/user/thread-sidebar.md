@@ -54,7 +54,7 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 On web and desktop, open **Board** from the sidebar or choose **Open thread board**
 in the command palette. The board is an inbox: threads waiting on an approval or
 an answer come first, then failed and finished work you have not settled. Working
-and idle threads sit in collapsed sections below. Filter by project across
+and idle threads sit in their own sections below. Filter by project across
 connected environments. Snoozed, settled, and archived threads are hidden. Snoozed
 threads return when they wake.
 
