@@ -14,6 +14,7 @@ import {
 } from "../components/threadBoard";
 import { useBoardShortcuts } from "../components/useBoardShortcuts";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
+import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { SidebarInset } from "../components/ui/sidebar";
 import {
@@ -107,16 +108,25 @@ function ThreadBoard() {
       block: "nearest",
     });
   };
+  const move = (step: 1 | -1) => {
+    const allRows = sections.flatMap((section) => section.threads);
+    const index = selected ? allRows.indexOf(selected) : -1;
+    const next = allRows[Math.min(Math.max(index + step, 0), allRows.length - 1)];
+    if (!next) return false;
+    select(next);
+    return true;
+  };
+  const focusComposer = () =>
+    document.querySelector<HTMLElement>("[data-board-composer] [contenteditable='true']")?.focus();
   useBoardShortcuts((key, event) => {
     if (key === "z") {
       if (!undoLatestThreadAction()) return;
-    } else if (key === "j" || key === "arrowdown" || key === "k" || key === "arrowup") {
-      const step = key === "j" || key === "arrowdown" ? 1 : -1;
-      const allRows = sections.flatMap((section) => section.threads);
-      const index = selected ? allRows.indexOf(selected) : -1;
-      const next = allRows[Math.min(Math.max(index + step, 0), allRows.length - 1)];
-      if (!next) return;
-      select(next);
+    } else if (key === "j" || key === "arrowdown") {
+      if (!move(1)) return;
+    } else if (key === "k" || key === "arrowup") {
+      if (!move(-1)) return;
+    } else if (key === "r" && selected) {
+      focusComposer();
     } else return;
     event.preventDefault();
   });
@@ -237,9 +247,20 @@ function ThreadBoard() {
               </section>
             );
           })}
-          <p className="mt-4 px-2 text-xs text-muted-foreground">
-            <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>R</Kbd> reply · <Kbd>Z</Kbd> undo
-          </p>
+          <div className="mt-4 flex flex-wrap gap-2 px-2">
+            <Button size="sm" variant="outline" onClick={() => move(1)}>
+              Next <Kbd>J</Kbd>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => move(-1)}>
+              Previous <Kbd>K</Kbd>
+            </Button>
+            <Button size="sm" variant="outline" disabled={!selected} onClick={focusComposer}>
+              Reply <Kbd>R</Kbd>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => undoLatestThreadAction()}>
+              Undo <Kbd>Z</Kbd>
+            </Button>
+          </div>
         </nav>
         <div className="min-h-0 p-4 sm:p-6 lg:overflow-auto">
           {selected ? (
