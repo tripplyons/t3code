@@ -7,7 +7,8 @@ import {
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { projectScriptCwd } from "@t3tools/shared/projectScripts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useRef, useState, type RefObject } from "react";
+import { useRef, useState, type FocusEvent, type RefObject } from "react";
+import { flushSync } from "react-dom";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useClientSettings } from "../hooks/useSettings";
@@ -65,6 +66,7 @@ export function BoardFocusCard({
   const [error, setError] = useState<string | null>(null);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozePresets, setSnoozePresets] = useState<ReadonlyArray<SnoozePreset>>([]);
+  const [composerFocused, setComposerFocused] = useState(false);
   // Approvals are answered here; the embedded composer owns questions and plans.
   const composerHostRef = useRef<HTMLDivElement>(null);
   const composerRef: RefObject<ChatComposerHandle | null> = useRef(null);
@@ -102,8 +104,19 @@ export function BoardFocusCard({
     }
     setSnoozeOpen(open);
   };
-  const focusComposer = () =>
+  const focusComposer = () => {
+    flushSync(() => setComposerFocused(true));
     composerHostRef.current?.querySelector<HTMLElement>("[contenteditable='true']")?.focus();
+  };
+  const onComposerBlur = (event: FocusEvent<HTMLDivElement>) => {
+    // Leaving the window keeps the editor active; portaled composer menus still count as inside.
+    if (!document.hasFocus()) return;
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    if (next instanceof Element && next.closest("[role='menu'], [role='listbox'], [role='dialog']"))
+      return;
+    setComposerFocused(false);
+  };
   const openThread = () =>
     void navigate({
       to: "/$environmentId/$threadId",
@@ -235,6 +248,8 @@ export function BoardFocusCard({
 
       <div
         ref={composerHostRef}
+        onFocus={() => setComposerFocused(true)}
+        onBlur={onComposerBlur}
         onKeyDownCapture={(event) => {
           // Esc in the editor hands the keyboard back to the board unless it is closing a
           // composer menu. ProseMirror prevents every Escape, so defaultPrevented can't tell.
@@ -254,6 +269,7 @@ export function BoardFocusCard({
           threadId={thread.id}
           routeKind="server"
           composerOnly
+          hideIdleComposer={!composerFocused}
         />
       </div>
     </article>

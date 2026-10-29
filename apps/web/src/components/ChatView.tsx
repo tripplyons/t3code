@@ -218,6 +218,7 @@ import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
   useComposerDraftStore,
+  useThreadHasUnsentDraft,
   DraftId,
 } from "../composerDraftStore";
 import { type TerminalContextDraft } from "../lib/terminalContext";
@@ -392,6 +393,8 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       /** Render only the composer, unfocused and without page shortcuts, for embedding. */
       composerOnly?: boolean;
+      /** With composerOnly, hide the composer while it has no draft and nothing waits on it. */
+      hideIdleComposer?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -417,12 +420,14 @@ export default function ChatView(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
   } = props;
   const composerOnly = routeKind === "server" && props.composerOnly === true;
+  const hideIdleComposer = composerOnly && props.hideIdleComposer === true;
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
   const routeThreadRef = scopeThreadRef(environmentId, threadId);
   const routeThreadKey = scopedThreadKey(routeThreadRef);
+  const routeThreadHasUnsentDraft = useThreadHasUnsentDraft(routeThreadRef);
   const currentRouteThreadKeyRef = useRef<string | null>(routeThreadKey);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the committed route thread key to a ref that async handlers check before applying results
   useLayoutEffect(() => {
@@ -3436,6 +3441,8 @@ export default function ChatView(props: ChatViewProps) {
     </ComposerSurface.Shell>
   );
 
+  const composerIdle =
+    !routeThreadHasUnsentDraft && pendingUserInputs.length === 0 && !showPlanFollowUpPrompt;
   const content = composerOnly ? (
     <div
       data-chat-workspace-drop-target="true"
@@ -3447,7 +3454,7 @@ export default function ChatView(props: ChatViewProps) {
     >
       {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
       {threadErrorBanner}
-      {composerShell}
+      <div hidden={hideIdleComposer && composerIdle}>{composerShell}</div>
       <ExpandedImageDialogHost threadKey={routeThreadKey} />
     </div>
   ) : (
