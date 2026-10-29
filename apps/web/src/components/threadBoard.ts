@@ -1,6 +1,6 @@
 import { resolveThreadBoardGroup } from "@t3tools/client-runtime/state/thread-sort";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
+import type { EnvironmentId, ProviderApprovalOption, ServerConfig } from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../types";
 import { filterSidebarV2VisibleThreads, sortThreadsForSidebar } from "./Sidebar.logic";
@@ -98,4 +98,17 @@ export function resolveBoardSelection<T>(
     rows.find((row) => keyOf(row) === selection.key) ??
     rows[Math.min(selection.index, rows.length - 1)]!
   );
+}
+
+const APPROVAL_KEY_ORDER = ["accept", "decline"];
+
+/** Approval choices in shortcut order: Approve on 1 and Decline on 2, then the rest as offered. */
+export function boardApprovalChoices(
+  options: ReadonlyArray<ProviderApprovalOption>,
+): ProviderApprovalOption[] {
+  const rank = (option: ProviderApprovalOption) => {
+    const index = APPROVAL_KEY_ORDER.indexOf(option.decision);
+    return index === -1 ? APPROVAL_KEY_ORDER.length : index;
+  };
+  return options.toSorted((left, right) => rank(left) - rank(right)).slice(0, 9);
 }

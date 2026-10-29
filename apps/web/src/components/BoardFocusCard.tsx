@@ -23,12 +23,12 @@ import type { SidebarThreadSummary } from "../types";
 import { BoardActivityPreviews } from "./BoardActivityPreviews";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { ComposerBanner } from "./chat/ComposerBanner";
-import { ComposerPendingApprovalActions } from "./chat/ComposerPendingApprovalActions";
+import { DEFAULT_APPROVAL_OPTIONS } from "./chat/ComposerPendingApprovalActions";
 import { ComposerPendingUserInputPanel } from "./chat/ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "./Sidebar.snooze";
-import { threadBoardStatus } from "./threadBoard";
+import { boardApprovalChoices, threadBoardStatus } from "./threadBoard";
 import { useBoardShortcuts } from "./useBoardShortcuts";
 import { Button } from "./ui/button";
 import { Kbd } from "./ui/kbd";
@@ -95,6 +95,9 @@ export function BoardFocusCard({
   });
   const activeQuestion = pending.activePendingProgress?.activeQuestion ?? null;
   const approval = pending.activePendingApproval;
+  const approvalChoices = boardApprovalChoices(approval?.options ?? DEFAULT_APPROVAL_OPTIONS);
+  const approvalResponding =
+    approval !== null && pending.respondingRequestIds.includes(approval.requestId);
   const working = resolveThreadBoardGroup(thread) === "working";
   const proposedPlan =
     thread.hasActionableProposedPlan && !working
@@ -164,8 +167,11 @@ export function BoardFocusCard({
     else if (key === "e" && settlementSupported) void settle();
     else if (key === "l" && snoozable) openSnooze(true);
     else if (key === "r" && canReply) replyRef.current?.focus();
-    else if (approval && approval.responseCapability === "live" && (key === "1" || key === "2")) {
-      void pending.onRespondToApproval(approval.requestId, key === "1" ? "accept" : "decline");
+    else if (approval && approval.responseCapability === "live" && /^[1-9]$/.test(key)) {
+      const choice = approvalChoices[Number(key) - 1];
+      if (!choice) return;
+      if (!approvalResponding)
+        void pending.onRespondToApproval(approval.requestId, choice.decision);
     } else if (key === "1" && canImplementPlan && proposedPlan) {
       void startTurn(buildPlanImplementationPrompt(proposedPlan.planMarkdown), proposedPlan);
     } else return;
@@ -228,19 +234,20 @@ export function BoardFocusCard({
           ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {approval.responseCapability === "live" ? (
-              <>
-                <ComposerPendingApprovalActions
-                  presentation="inline"
-                  requestId={approval.requestId}
-                  isResponding={pending.respondingRequestIds.includes(approval.requestId)}
-                  canRespond
-                  options={approval.options}
-                  onRespondToApproval={pending.onRespondToApproval}
-                />
-                <span className="text-xs text-muted-foreground">
-                  <Kbd>1</Kbd> approve · <Kbd>2</Kbd> decline
-                </span>
-              </>
+              approvalChoices.map((choice, index) => (
+                <Button
+                  key={choice.decision}
+                  size="sm"
+                  variant={choice.decision === "accept" ? "default" : "outline"}
+                  disabled={approvalResponding}
+                  title={choice.warning}
+                  onClick={() =>
+                    void pending.onRespondToApproval(approval.requestId, choice.decision)
+                  }
+                >
+                  {choice.label} <Kbd>{index + 1}</Kbd>
+                </Button>
+              ))
             ) : (
               <span className="text-xs text-warning">
                 Provider process is gone. Open the thread to restart the run.

@@ -59,8 +59,8 @@ connected environments. Snoozed, settled, and archived threads are hidden. Snooz
 threads return when they wake.
 
 Select a thread to see what its agent did and what it needs, and act without
-leaving the board. Press `J` and `K` to move, `1` or `2` to approve or decline,
-`1` to implement a ready plan, and the numbered options to answer a question. Press
+leaving the board. Press `J` and `K` to move, the number beside a choice to approve,
+decline, or answer a question, and `1` to implement a ready plan. Press
 `R` to reply, `E` to settle, `L` to snooze, `Z` to undo, and `Enter` to open the
 thread. A thread waiting on you can't be snoozed. Answer it or settle it instead.
 

@@ -11,7 +11,12 @@ import {
 import * as DateTime from "effect/DateTime";
 import type { SidebarThreadSummary } from "../types";
 import { sortThreadsForSidebar } from "./Sidebar.logic";
-import { buildThreadBoard, resolveBoardSelection, resolveThreadBoardSection } from "./threadBoard";
+import {
+  boardApprovalChoices,
+  buildThreadBoard,
+  resolveBoardSelection,
+  resolveThreadBoardSection,
+} from "./threadBoard";
 
 const now = "2026-09-19T12:00:00.000Z";
 const environmentId = EnvironmentId.make("local");
@@ -360,5 +365,22 @@ describe("thread board", () => {
       serverConfigs: new Map(),
     });
     expect(board.find((column) => column.id === "idle")?.threads).toHaveLength(1);
+  });
+});
+
+describe("boardApprovalChoices", () => {
+  it("keeps Approve on 1 and Decline on 2 whatever order the provider offers", () => {
+    const choices = boardApprovalChoices([
+      { decision: "cancel", label: "Cancel" },
+      { decision: "decline", label: "Decline" },
+      { decision: "acceptForSession", label: "Always allow this session" },
+      { decision: "accept", label: "Approve" },
+    ]);
+    expect(choices.map((choice) => choice.decision)).toEqual([
+      "accept",
+      "decline",
+      "cancel",
+      "acceptForSession",
+    ]);
   });
 });

@@ -12,8 +12,7 @@ const BOARD_KEYS = new Set([
   "l",
   "r",
   "z",
-  "1",
-  "2",
+  ..."123456789",
 ]);
 
 /** Board keys apply only while focus rests on the board itself or on nothing at all. */
@@ -28,7 +27,7 @@ function boardShortcutKey(event: KeyboardEvent): string | null {
     return null;
   if (target.closest("[role='dialog'], [role='menu']")) return null;
   // Enter and digits keep their meaning on the card's own buttons and links.
-  if ((key === "enter" || key === "1" || key === "2") && !target.closest("[data-board-row]")) {
+  if ((key === "enter" || /^[1-9]$/.test(key)) && !target.closest("[data-board-row]")) {
     if (target.closest("button, a")) return null;
   }
   return key;
