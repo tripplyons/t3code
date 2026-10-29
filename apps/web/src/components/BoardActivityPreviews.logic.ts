@@ -1,4 +1,5 @@
-import type { ThreadActivityPreview } from "@t3tools/contracts";
+import type { OrchestrationV2ProjectedTurnItem, ThreadActivityPreview } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 /** Matches the enter/exit pair on .board-preview-row in index.css. */
 export const BOARD_PREVIEW_TRANSITION_MS = 260;
@@ -68,4 +69,25 @@ export function settleBoardPreviewRows(
   return rows
     .filter((row) => row.phase !== "exiting")
     .map((row): BoardPreviewRow => (row.phase === "steady" ? row : { ...row, phase: "steady" }));
+}
+
+/**
+ * The full text behind a preview, found in the thread's turn items the way the
+ * server picked it: same kind and the same start time. Null until the detail
+ * has the item.
+ */
+export function findBoardPreviewSourceText(
+  rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  preview: ThreadActivityPreview,
+): string | null {
+  const type = preview.kind === "reasoning" ? "reasoning" : "assistant_message";
+  for (const { item } of rows) {
+    if (
+      item.type === type &&
+      DateTime.formatIso(item.startedAt ?? item.updatedAt) === preview.createdAt
+    ) {
+      return item.text;
+    }
+  }
+  return null;
 }

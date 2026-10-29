@@ -5,9 +5,11 @@ import {
   advanceBoardPreviewRows,
   boardPreviewSignature,
   buildBoardPreviewIndex,
+  findBoardPreviewSourceText,
   initialBoardPreviewRows,
   settleBoardPreviewRows,
 } from "./BoardActivityPreviews.logic";
+import { makeStreamingTimelineFixture } from "../test-fixtures";
 
 function preview(
   createdAt: string,
@@ -121,5 +123,19 @@ describe("settleBoardPreviewRows", () => {
   it("keeps a settled stack identical so the timer cannot loop", () => {
     const rows = initialBoardPreviewRows(buildBoardPreviewIndex(newestFirst));
     expect(settleBoardPreviewRows(rows)).toBe(rows);
+  });
+});
+
+describe("findBoardPreviewSourceText", () => {
+  it("finds the full message behind a cut preview by kind and start time", () => {
+    const full = "a".repeat(600);
+    const { visibleTurnItems, time } = makeStreamingTimelineFixture(full);
+    expect(findBoardPreviewSourceText(visibleTurnItems, preview(time(7), "a".repeat(240)))).toBe(
+      full,
+    );
+    expect(findBoardPreviewSourceText(visibleTurnItems, preview(time(3), "Done"))).toBe("Done");
+    expect(
+      findBoardPreviewSourceText(visibleTurnItems, preview(time(7), "a", "reasoning")),
+    ).toBeNull();
   });
 });
