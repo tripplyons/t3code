@@ -9,7 +9,6 @@ import { migrationManifest, runMigrations } from "./Migrations.ts";
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
-import ThreadActivityPreviewsV2 from "./Migrations/065_ThreadActivityPreviewsV2.ts";
 
 const seedPreview = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -45,9 +44,14 @@ describe("V2 preview upgrade", () => {
         [62, "ThreadFailureLookupIndex"],
         [63, "DropUnusedV1Projections"],
         [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "ThreadActivityPreviewsV2"],
-        [66, "CodexUsageNativeTurnIndex"],
-        [67, "RepairClientSettlementTimestamps"],
+        [65, "CodexUsageNativeTurnIndex"],
+        [66, "RepairClientSettlementTimestamps"],
+        [67, "WebhookDedupe"],
+        [68, "ShellStopRequestIndex"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -135,9 +139,14 @@ describe("V2 preview upgrade", () => {
         [62, "ThreadFailureLookupIndex"],
         [63, "DropUnusedV1Projections"],
         [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "ThreadActivityPreviewsV2"],
-        [66, "CodexUsageNativeTurnIndex"],
-        [67, "RepairClientSettlementTimestamps"],
+        [65, "CodexUsageNativeTurnIndex"],
+        [66, "RepairClientSettlementTimestamps"],
+        [67, "WebhookDedupe"],
+        [68, "ShellStopRequestIndex"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
@@ -156,138 +165,3 @@ describe("V2 preview upgrade", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 });
-
-it.effect("upgrades the fork's 54-57 ledger without skipping V2 or losing legacy state", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 53 });
-    yield* sql`ALTER TABLE projection_threads ADD COLUMN auto_settle_disabled_at TEXT`;
-    yield* sql`ALTER TABLE projection_threads ADD COLUMN goal_json TEXT`;
-    const names = [
-      "ThreadActivityPreviewIndexes",
-      "ThreadActivityPreviewReasoningIndex",
-      "ProjectionThreadsAutoSettleDisabledAt",
-      "ProjectionThreadGoal",
-    ];
-    for (const [offset, name] of names.entries()) {
-      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${54 + offset}, ${name})`;
-    }
-    yield* sql`CREATE TABLE fork_upgrade_sentinel (value TEXT)`;
-    yield* sql`INSERT INTO fork_upgrade_sentinel VALUES ('preserved')`;
-    assert.deepStrictEqual(yield* runMigrations(), [
-      [54, "ProjectionThreadsAutoSettleDisabledAt"],
-      [55, "OrchestrationV2"],
-      [56, "RemoveRedundantProjectionIndexes"],
-      [57, "ScheduledTaskWebhooks"],
-      [58, "WebhookRelayDeliveries"],
-      [59, "McpAppModelContext"],
-      [60, "ThreadSnapshotWindowIndexes"],
-      [61, "PullRequestReviewGuides"],
-      [62, "ThreadFailureLookupIndex"],
-      [63, "DropUnusedV1Projections"],
-      [64, "CanonicalizeThreadPullRequestLinks"],
-      [65, "ThreadActivityPreviewsV2"],
-      [66, "CodexUsageNativeTurnIndex"],
-      [67, "RepairClientSettlementTimestamps"],
-    ]);
-    assert.deepStrictEqual(yield* runMigrations(), []);
-    assert.deepStrictEqual(yield* sql`SELECT * FROM fork_upgrade_sentinel`, [
-      { value: "preserved" },
-    ]);
-    const history = yield* sql<{
-      readonly migration_id: number;
-      readonly name: string;
-    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
-    assert.deepStrictEqual(
-      history.map((row) => [row.migration_id, row.name] as const),
-      migrationManifest,
-    );
-    assert.strictEqual(
-      (yield* sql`SELECT name FROM sqlite_master WHERE name = 'orchestration_v2_projection_threads'`)
-        .length,
-      1,
-    );
-  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
-);
-
-it.effect("moves the fork's activity preview index off upstream migration 57", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 56 });
-    yield* ThreadActivityPreviewsV2;
-    yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (57, 'ThreadActivityPreviewsV2')`;
-    assert.deepStrictEqual(yield* runMigrations(), [
-      [57, "ScheduledTaskWebhooks"],
-      [58, "WebhookRelayDeliveries"],
-      [59, "McpAppModelContext"],
-      [60, "ThreadSnapshotWindowIndexes"],
-      [61, "PullRequestReviewGuides"],
-      [62, "ThreadFailureLookupIndex"],
-      [63, "DropUnusedV1Projections"],
-      [64, "CanonicalizeThreadPullRequestLinks"],
-      [65, "ThreadActivityPreviewsV2"],
-      [66, "CodexUsageNativeTurnIndex"],
-      [67, "RepairClientSettlementTimestamps"],
-    ]);
-    assert.deepStrictEqual(yield* runMigrations(), []);
-    const history = yield* sql<{
-      readonly migration_id: number;
-      readonly name: string;
-    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
-    assert.deepStrictEqual(
-      history.map((row) => [row.migration_id, row.name] as const),
-      migrationManifest,
-    );
-  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
-);
-
-it.effect("moves the fork's activity preview index off upstream migration 62", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 61 });
-    yield* ThreadActivityPreviewsV2;
-    yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (62, 'ThreadActivityPreviewsV2')`;
-    assert.deepStrictEqual(yield* runMigrations(), [
-      [62, "ThreadFailureLookupIndex"],
-      [63, "DropUnusedV1Projections"],
-      [64, "CanonicalizeThreadPullRequestLinks"],
-      [65, "ThreadActivityPreviewsV2"],
-      [66, "CodexUsageNativeTurnIndex"],
-      [67, "RepairClientSettlementTimestamps"],
-    ]);
-    assert.deepStrictEqual(yield* runMigrations(), []);
-    const history = yield* sql<{
-      readonly migration_id: number;
-      readonly name: string;
-    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
-    assert.deepStrictEqual(
-      history.map((row) => [row.migration_id, row.name] as const),
-      migrationManifest,
-    );
-  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
-);
-
-it.effect("moves the fork's activity preview index off upstream migration 63", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 62 });
-    yield* ThreadActivityPreviewsV2;
-    yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (63, 'ThreadActivityPreviewsV2')`;
-    assert.deepStrictEqual(yield* runMigrations(), [
-      [63, "DropUnusedV1Projections"],
-      [64, "CanonicalizeThreadPullRequestLinks"],
-      [65, "ThreadActivityPreviewsV2"],
-      [66, "CodexUsageNativeTurnIndex"],
-      [67, "RepairClientSettlementTimestamps"],
-    ]);
-    assert.deepStrictEqual(yield* runMigrations(), []);
-    const history = yield* sql<{
-      readonly migration_id: number;
-      readonly name: string;
-    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
-    assert.deepStrictEqual(
-      history.map((row) => [row.migration_id, row.name] as const),
-      migrationManifest,
-    );
-  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
-);
