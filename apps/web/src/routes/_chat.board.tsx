@@ -9,7 +9,6 @@ import { BoardFocusCard } from "../components/BoardFocusCard";
 import {
   buildThreadBoard,
   resolveBoardSelection,
-  threadBoardStatus,
   type BoardSection,
 } from "../components/threadBoard";
 import { useBoardShortcuts } from "../components/useBoardShortcuts";
@@ -232,7 +231,7 @@ function ThreadBoard() {
                               </p>
                             ) : null}
                             <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {threadBoardStatus(thread)} · {project?.title ?? "Unknown project"}
+                              {project?.title ?? "Unknown project"}
                             </div>
                           </button>
                         </li>
