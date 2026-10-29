@@ -52,12 +52,17 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 ## View unsettled work on the board
 
 On web and desktop, open **Board** from the sidebar or choose **Open thread board**
-in the command palette. See which agents need your attention or are still working,
-and filter by project across connected environments. Snoozed, settled, and archived
-threads are hidden. Snoozed threads return when they wake.
+in the command palette. The board is an inbox: threads waiting on an approval or
+an answer come first, then failed and finished work you have not settled. Working
+and idle threads sit in collapsed sections below. Filter by project across
+connected environments. Snoozed, settled, and archived threads are hidden. Snoozed
+threads return when they wake.
 
-Open a card to continue its conversation. Use the existing thread controls to
-settle or snooze work.
+Select a thread to see what its agent did and what it needs, and act without
+leaving the board. Press `J` and `K` to move, `1` or `2` to approve or decline,
+`1` to implement a ready plan, and the numbered options to answer a question. Press
+`R` to reply, `E` to settle, `L` to snooze, `Z` to undo, and `Enter` to open the
+thread. A thread waiting on you can't be snoozed. Answer it or settle it instead.
 
 ## Pin and reorder threads
 

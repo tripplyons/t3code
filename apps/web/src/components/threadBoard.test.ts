@@ -11,11 +11,11 @@ import {
 import * as DateTime from "effect/DateTime";
 import type { SidebarThreadSummary } from "../types";
 import { sortThreadsForSidebar } from "./Sidebar.logic";
-import { buildThreadBoard, resolveThreadBoardColumn } from "./threadBoard";
+import { buildThreadBoard, resolveBoardSelection, resolveThreadBoardSection } from "./threadBoard";
 
 const now = "2026-09-19T12:00:00.000Z";
 const environmentId = EnvironmentId.make("local");
-const options = { now, snoozeSupported: true };
+const options = { now, snoozeSupported: true, settlementSupported: false };
 function thread(overrides: Partial<SidebarThreadSummary> = {}): SidebarThreadSummary {
   return {
     source: OrchestrationV2ThreadShell.make({
@@ -189,24 +189,24 @@ describe("thread board", () => {
       thread({ id: ThreadId.make("waiting"), pendingBackgroundTasks, latestRun: completed }),
       thread({ id: ThreadId.make("running"), runtime: runtime("running") }),
     ];
-    expect(resolveThreadBoardColumn(rows[1]!, options)).toBe("working");
+    expect(resolveThreadBoardSection(rows[1]!, options)).toBe("working");
     expect(sortThreadsForSidebar(rows).map((row) => row.id)).toEqual([
       "running",
       "waiting",
       "idle",
     ]);
     expect(
-      resolveThreadBoardColumn(
+      resolveThreadBoardSection(
         thread({ pendingBackgroundTasks, hasPendingUserInput: true }),
         options,
       ),
-    ).toBe("needs-you");
+    ).toBe("inbox");
     expect(
-      resolveThreadBoardColumn(
+      resolveThreadBoardSection(
         thread({ pendingBackgroundTasks, runtime: runtime("failed") }),
         options,
       ),
-    ).toBe("needs-you");
+    ).toBe("inbox");
   });
   it("hides delegated work only when its parent is available", () => {
     const child = thread({ id: ThreadId.make("delegated") });
@@ -222,21 +222,45 @@ describe("thread board", () => {
     ).toEqual([]);
   });
 
-  it("groups completed results and proposed plans with idle threads", () => {
-    expect(resolveThreadBoardColumn(thread(), options)).toBe("idle");
-    expect(resolveThreadBoardColumn(thread({ latestRun: completed }), options)).toBe("idle");
-    expect(resolveThreadBoardColumn(thread({ hasActionableProposedPlan: true }), options)).toBe(
-      "idle",
+  it("inboxes finished work only where settling can clear it", () => {
+    const settling = { ...options, settlementSupported: true };
+    for (const overrides of [{}, { latestRun: completed }, { hasActionableProposedPlan: true }]) {
+      expect(resolveThreadBoardSection(thread(overrides), options)).toBe("idle");
+      expect(resolveThreadBoardSection(thread(overrides), settling)).toBe("inbox");
+    }
+    const board = buildThreadBoard(
+      [
+        thread({ id: ThreadId.make("done"), latestRun: completed }),
+        thread({ id: ThreadId.make("working"), runtime: runtime("running") }),
+        thread({ id: ThreadId.make("question"), hasPendingUserInput: true }),
+      ],
+      { now, projectKey: "", serverConfigs: new Map([[environmentId, capabilities]]) },
     );
+    expect(board.map((section) => [section.id, section.threads.map((item) => item.id)])).toEqual([
+      ["inbox", ["question", "done"]],
+      ["working", ["working"]],
+      ["idle", []],
+    ]);
+  });
+  it("moves the selection to the row that replaced a handled one", () => {
+    const keyOf = (row: string) => row;
+    expect(resolveBoardSelection([], keyOf, { key: "a", index: 0 })).toBeNull();
+    expect(resolveBoardSelection(["a", "b"], keyOf, null)).toBe("a");
+    expect(resolveBoardSelection(["a", "b", "c"], keyOf, { key: "c", index: 0 })).toBe("c");
+    expect(resolveBoardSelection(["a", "c"], keyOf, { key: "b", index: 1 })).toBe("c");
+    expect(resolveBoardSelection(["a"], keyOf, { key: "b", index: 1 })).toBe("a");
   });
   it.each(["running", "idle"] as const)("keeps live background %s out of Idle", (status) => {
     expect(
-      resolveThreadBoardColumn(thread({ latestRun: completed, runtime: runtime(status) }), options),
+      resolveThreadBoardSection(
+        thread({ latestRun: completed, runtime: runtime(status) }),
+        options,
+      ),
     ).toBe("working");
   });
   it.each(["starting", "running"] as const)("shows a %s session as Working", (status) => {
     expect(
-      resolveThreadBoardColumn(
+      resolveThreadBoardSection(
         thread({
           runtime: {
             providerInstanceId: ProviderInstanceId.make("codex"),
@@ -253,7 +277,7 @@ describe("thread board", () => {
   });
   it("prioritizes failures over stale background work", () => {
     expect(
-      resolveThreadBoardColumn(
+      resolveThreadBoardSection(
         thread({
           runtime: {
             providerInstanceId: ProviderInstanceId.make("codex"),
@@ -266,21 +290,21 @@ describe("thread board", () => {
         }),
         options,
       ),
-    ).toBe("needs-you");
+    ).toBe("inbox");
   });
   it("wakes snoozed threads for questions and approvals, but not completed work", () => {
-    expect(resolveThreadBoardColumn(thread(snoozed), options)).toBeNull();
+    expect(resolveThreadBoardSection(thread(snoozed), options)).toBeNull();
     expect(
-      resolveThreadBoardColumn(thread({ ...snoozed, hasPendingApprovals: true }), options),
-    ).toBe("needs-you");
+      resolveThreadBoardSection(thread({ ...snoozed, hasPendingApprovals: true }), options),
+    ).toBe("inbox");
     expect(
-      resolveThreadBoardColumn(thread({ ...snoozed, hasPendingUserInput: true }), options),
-    ).toBe("needs-you");
+      resolveThreadBoardSection(thread({ ...snoozed, hasPendingUserInput: true }), options),
+    ).toBe("inbox");
     expect(
-      resolveThreadBoardColumn(thread({ ...snoozed, latestRun: completed }), options),
+      resolveThreadBoardSection(thread({ ...snoozed, latestRun: completed }), options),
     ).toBeNull();
     expect(
-      resolveThreadBoardColumn(thread(snoozed), { ...options, now: snoozed.snoozedUntil }),
+      resolveThreadBoardSection(thread(snoozed), { ...options, now: snoozed.snoozedUntil }),
     ).toBe("idle");
   });
   it("excludes archived, settled, and snoozed threads while retaining pinned work", () => {

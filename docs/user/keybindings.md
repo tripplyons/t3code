@@ -10,7 +10,8 @@ On web and desktop, assign shortcuts to **Board: Open** (`board.open`) and
 shortcut. Toggle opens the board or returns to the page you were on before it.
 
 Your thread jump shortcuts follow the sidebar's order on the board too. Hold their
-modifier to see the shortcut on each card that has one.
+modifier to see the shortcut on each row that has one. The board's own keys are
+fixed; see [the board](thread-sidebar.md#view-unsettled-work-on-the-board).
 
 ## Composer controls
 
