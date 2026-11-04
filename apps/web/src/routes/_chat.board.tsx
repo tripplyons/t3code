@@ -15,6 +15,7 @@ import { useBoardShortcuts } from "../components/useBoardShortcuts";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
+import { JumpHintBadge } from "../components/sidebar/SidebarThreadRow";
 import { SidebarInset } from "../components/ui/sidebar";
 import {
   Select,
@@ -212,19 +213,16 @@ function ThreadBoard() {
                             aria-current={isSelected ? "true" : undefined}
                             onClick={() => select(thread)}
                             className={cn(
-                              "relative block w-full rounded-lg border border-transparent px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                              "block w-full rounded-lg border border-transparent px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                               isSelected && "border-border bg-accent",
                             )}
                           >
-                            {jumpLabel && (
-                              <span
-                                aria-hidden
-                                className="pointer-events-none absolute right-2 top-2 inline-flex h-5 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
-                              >
-                                {jumpLabel}
-                              </span>
-                            )}
-                            <div className="truncate pr-8 text-sm font-medium">{thread.title}</div>
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1 truncate text-sm font-medium">
+                                {thread.title}
+                              </div>
+                              {jumpLabel ? <JumpHintBadge label={jumpLabel} /> : null}
+                            </div>
                             {preview ? (
                               <p className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">
                                 {preview}

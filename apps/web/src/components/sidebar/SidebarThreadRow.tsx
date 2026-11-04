@@ -149,7 +149,7 @@ function threadTimeTimestamp(thread: SidebarThreadSummary): string {
   return thread.latestUserMessageAt ?? thread.updatedAt;
 }
 
-function JumpHintBadge(props: { label: string }) {
+export function JumpHintBadge(props: { label: string }) {
   return (
     <Kbd aria-hidden data-jump-hint>
       {props.label}
