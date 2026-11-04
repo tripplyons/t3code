@@ -1,9 +1,5 @@
-import { useEffect, useState } from "react";
-import {
-  THREAD_ACTIVITY_PREVIEW_MAX_CHARS,
-  type ScopedThreadRef,
-  type ThreadActivityPreview,
-} from "@t3tools/contracts";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ScopedThreadRef, ThreadActivityPreview } from "@t3tools/contracts";
 
 import { observeResize } from "../lib/observeResize";
 import { useThreadVisibleTurnItems } from "../state/entities";
@@ -90,6 +86,11 @@ export function BoardActivityPreviews({
   );
 }
 
+// Far past three lines at any card width, so a long message stops reparsing once it is clipped.
+const COLLAPSED_TEXT_LIMIT = 2000;
+
+const isClipped = (clip: HTMLElement) => clip.scrollHeight > clip.clientHeight;
+
 function BoardPreviewBody({
   preview,
   expanded,
@@ -103,58 +104,37 @@ function BoardPreviewBody({
   cwd: string | undefined;
   threadRef: ScopedThreadRef;
 }) {
+  const rows = useThreadVisibleTurnItems(threadRef);
+  const text = findBoardPreviewSourceText(rows, preview) ?? preview.text;
+  const displayedText = expanded ? text : text.slice(0, COLLAPSED_TEXT_LIMIT);
+  const clipRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
-  const observeClip = (clip: HTMLDivElement | null) => {
-    const content = clip?.firstElementChild;
-    if (!clip || !content) return;
-    return observeResize(content, () => setOverflowing(clip.scrollHeight > clip.clientHeight));
-  };
-  // The server cuts previews at this length, so a full one has more to show.
-  const cut = Array.from(preview.text).length >= THREAD_ACTIVITY_PREVIEW_MAX_CHARS;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Width changes rewrap the text, which only the DOM can measure.
+  useLayoutEffect(() => {
+    const clip = clipRef.current;
+    if (clip) return observeResize(clip, () => setOverflowing(isClipped(clip)));
+  }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A clamped box keeps its height as text grows, so a resize observer misses it; measure after each render.
+  useLayoutEffect(() => {
+    if (clipRef.current) setOverflowing(isClipped(clipRef.current));
+  });
   return (
     <>
-      {expanded ? (
-        <BoardPreviewFullText preview={preview} cwd={cwd} threadRef={threadRef} />
-      ) : (
-        <div ref={observeClip} className="max-h-40 overflow-hidden">
-          <div>
-            <ChatMarkdown
-              text={preview.text}
-              cwd={cwd}
-              threadRef={threadRef}
-              environmentId={threadRef.environmentId}
-              parseRawHtml={false}
-            />
-          </div>
-        </div>
-      )}
-      {expanded || cut || overflowing ? (
+      {/* Clamping skips code blocks and tables, so the height cap bounds those. */}
+      <div ref={clipRef} className={expanded ? undefined : "line-clamp-3 max-h-28"}>
+        <ChatMarkdown
+          text={displayedText}
+          cwd={cwd}
+          threadRef={threadRef}
+          environmentId={threadRef.environmentId}
+          parseRawHtml={false}
+        />
+      </div>
+      {expanded || overflowing ? (
         <Button size="micro" variant="ghost-muted" aria-expanded={expanded} onClick={onToggle}>
           {expanded ? "Show less" : "Show more"}
         </Button>
       ) : null}
     </>
-  );
-}
-
-/** Subscribes to the streamed thread detail only while a row is expanded. */
-function BoardPreviewFullText({
-  preview,
-  cwd,
-  threadRef,
-}: {
-  preview: ThreadActivityPreview;
-  cwd: string | undefined;
-  threadRef: ScopedThreadRef;
-}) {
-  const rows = useThreadVisibleTurnItems(threadRef);
-  return (
-    <ChatMarkdown
-      text={findBoardPreviewSourceText(rows, preview) ?? preview.text}
-      cwd={cwd}
-      threadRef={threadRef}
-      environmentId={threadRef.environmentId}
-      parseRawHtml={false}
-    />
   );
 }

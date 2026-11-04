@@ -153,11 +153,11 @@ function ThreadBoard() {
       </WorkspacePageHeader>
       <div
         data-board-root
-        className="grid min-h-0 flex-1 grid-cols-1 overflow-auto bg-background lg:grid-cols-[minmax(18rem,26rem)_1fr] lg:overflow-hidden"
+        className="grid min-h-0 flex-1 grid-cols-1 content-start overflow-auto bg-background lg:grid-cols-[minmax(18rem,26rem)_1fr] lg:content-normal lg:overflow-hidden"
       >
         <nav
           aria-label="Board threads"
-          className="min-h-0 border-b p-3 lg:overflow-auto lg:border-r lg:border-b-0"
+          className="border-b p-3 lg:min-h-0 lg:overflow-auto lg:border-r lg:border-b-0"
         >
           {!bootstrapped && (
             <p role="status" className="mb-3 px-2 text-sm text-muted-foreground">
@@ -252,7 +252,7 @@ function ThreadBoard() {
             </Button>
           </div>
         </nav>
-        <div className="min-h-0 p-4 sm:p-6 lg:overflow-auto">
+        <div className="p-4 sm:p-6 lg:min-h-0 lg:overflow-auto">
           {selected ? (
             <BoardFocusCard
               key={rowKey(selected)}
