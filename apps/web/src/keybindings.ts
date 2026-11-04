@@ -10,20 +10,24 @@ import {
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
 import {
-  DEFAULT_RESOLVED_KEYBINDINGS,
   isMacPlatform,
   matchesKeybindingShortcut,
   matchesKeybindingShortcutModifiers,
   normalizeEventKey,
   resolveEventKeys,
-  type ShortcutEventLike,
+  type ShortcutEventLike as SharedShortcutEventLike,
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
+import { isEditableFocused } from "./lib/editableFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
-export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
+export type { ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
 export { shortcutKeyFromEvent } from "@t3tools/shared/keybindings";
+
+export interface ShortcutEventLike extends SharedShortcutEventLike {
+  target?: EventTarget | null;
+}
 
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
@@ -178,6 +182,9 @@ export function resolveShortcutCommand(
 ): KeybindingCommand | null {
   const platform = resolvePlatform(options);
   const context = resolveContext(options);
+  if (options?.context?.editableFocus === undefined && typeof document !== "undefined") {
+    context.editableFocus = isEditableFocused(event.target ?? document.activeElement);
+  }
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
@@ -187,23 +194,6 @@ export function resolveShortcutCommand(
     return binding.command;
   }
   return null;
-}
-
-/**
- * Whether the user bound this keypress themselves: it resolves to a command
- * the default bindings would not give it. A focused editor yields these
- * chords to the app instead of running its built-in handling (select all,
- * formatting), which would otherwise swallow them. Chords left at their
- * default keep the editor's behavior, such as Mod+B for bold.
- */
-export function isCustomShortcut(
-  event: ShortcutEventLike,
-  keybindings: ResolvedKeybindingsConfig,
-  options?: ShortcutMatchOptions,
-): boolean {
-  const command = resolveShortcutCommand(event, keybindings, options);
-  if (command === null) return false;
-  return command !== resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, options);
 }
 
 /** App shortcuts use the primary environment; script shortcuts belong to the active project. */
@@ -481,10 +471,6 @@ export function terminalNavigationShortcutData(
       return moveLine;
     }
     return null;
-  }
-
-  if (event.ctrlKey && !event.metaKey && !event.altKey) {
-    return moveWord;
   }
 
   if (event.altKey && !event.metaKey && !event.ctrlKey) {
