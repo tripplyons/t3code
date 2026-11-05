@@ -1165,7 +1165,8 @@ export function resolveThreadStatusPill(input: {
 
   if (
     (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
+    ((thread.pendingBackgroundTasks?.length ?? 0) > 0 && thread.runtime?.status !== "failed")
   ) {
     return {
       label: "Waiting",

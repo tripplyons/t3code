@@ -1588,6 +1588,15 @@ html[data-theme-id] [data-app-sidebar] {
   }
 }
 
+/* The board's thread list is a panel edge like the sidebar's, not a card border. */
+html[data-theme-id] [data-board-nav] {
+  border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+
+  @variant dark {
+    border-color: color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+  }
+}
+
 /* T3 Chat's panel divider is deliberately pink, and its resize affordance
    keeps that color while hovered. Do not neutralize this branded edge. */
 html[data-theme-id="t3-chat"] [data-app-sidebar] {

@@ -157,6 +157,7 @@ function ThreadBoard() {
       >
         <nav
           aria-label="Board threads"
+          data-board-nav
           className="border-b p-3 lg:min-h-0 lg:overflow-auto lg:border-r lg:border-b-0"
         >
           {!bootstrapped && (
@@ -213,8 +214,9 @@ function ThreadBoard() {
                             aria-current={isSelected ? "true" : undefined}
                             onClick={() => select(thread)}
                             className={cn(
-                              "block w-full rounded-lg border border-transparent px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                              isSelected && "border-border bg-accent",
+                              "block w-full rounded-lg px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                              isSelected &&
+                                "bg-accent light:ring-1 light:ring-inset light:ring-border/70",
                             )}
                           >
                             <div className="flex items-start gap-2">

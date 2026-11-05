@@ -216,14 +216,17 @@ function terminalRunStatus(status: OrchestrationV2RunStatus): boolean {
   );
 }
 
-// Only work the agent waits on holds it: commands and monitors it left running
-// unmarked, such as a dev server, present the run's own status. The
-// server suppresses the roster while an interruptible activity run exists, so a
-// remaining roster is stronger than checkpoint-oriented waiting.
+// Clients show any listed background work as waiting once the run ends, including
+// unawaited commands and monitors such as a dev server; the server's completion and
+// settlement rules still ignore those. Awaited work parks the thread even mid-run.
 function shellRuntime(thread: OrchestrationV2ThreadShell): ThreadRuntimeSummary | null {
+  const tasks = thread.pendingBackgroundTasks ?? [];
+  const runEnded =
+    (thread.activityRunStatus ?? null) === null &&
+    (thread.status === "idle" || terminalRunStatus(thread.status));
   const parkAtIdle =
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
-    thread.status !== "failed";
+    thread.status !== "failed" &&
+    (backgroundWorkHoldsCompletion(tasks) || (tasks.length > 0 && runEnded));
   if (thread.latestRunId === null && thread.activeProviderThreadId === null && !parkAtIdle) {
     return null;
   }

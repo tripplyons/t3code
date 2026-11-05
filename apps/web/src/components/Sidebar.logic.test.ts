@@ -905,16 +905,16 @@ describe("unseen completion with background work", () => {
     {
       roster: "dev server",
       task: { kind: "command" },
-      status: "ready",
-      receded: false,
-      pill: "Completed",
+      status: "waiting",
+      receded: true,
+      pill: "Waiting",
     },
     {
       roster: "dev server watchdog",
       task: { kind: "monitor" },
-      status: "ready",
-      receded: false,
-      pill: "Completed",
+      status: "waiting",
+      receded: true,
+      pill: "Waiting",
     },
     {
       roster: "awaited command",

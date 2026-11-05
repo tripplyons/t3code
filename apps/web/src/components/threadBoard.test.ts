@@ -187,7 +187,7 @@ describe("thread board", () => {
 
   it("groups pending background work with running threads in the board and sidebar", () => {
     const pendingBackgroundTasks = [
-      { taskId: "monitor", kind: "monitor" as const, description: "Watch", awaited: true as const },
+      { taskId: "monitor", kind: "monitor" as const, description: "Watch" },
     ];
     const rows = [
       thread({ id: ThreadId.make("idle"), createdAt: "2026-09-20T12:00:00.000Z" }),
