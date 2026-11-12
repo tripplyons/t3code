@@ -9,7 +9,6 @@ import { migrationManifest, runMigrations } from "./Migrations.ts";
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
-import ThreadActivityPreviewsV2 from "./Migrations/065_ThreadActivityPreviewsV2.ts";
 import CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 import WebhookDedupe from "./Migrations/067_WebhookDedupe.ts";
@@ -27,6 +26,16 @@ const seedPreview = Effect.gen(function* () {
   `;
   yield* sql`
     UPDATE effect_sql_migrations SET created_at = '2026-09-15 00:00:00' WHERE migration_id = 53
+  `;
+});
+
+// An earlier fork release recorded this index as migration 65 before upstream assigned that id.
+const ThreadActivityPreviewsV2 = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`
+    CREATE INDEX IF NOT EXISTS orchestration_v2_thread_preview_idx
+    ON orchestration_v2_projection_turn_items(thread_id, updated_at DESC, turn_item_id DESC)
+    WHERE type IN ('assistant_message', 'reasoning') AND json_extract(payload_json, '$.text') <> ''
   `;
 });
 
@@ -107,6 +116,12 @@ describe("V2 preview upgrade", () => {
         [77, "RepairBooleanSettledOverride"],
         [78, "DropOrchestrationEventCorrelationIndex"],
         [79, "DelegatedRecoveryIndexes"],
+        [80, "ScheduledTaskThreadMode"],
+        [81, "ProjectionMessageSearchText"],
+        [82, "TurnItemConversationIndex"],
+        [83, "CommandReadIndexes"],
+        [84, "LastExecutedRunIndex"],
+        [85, "TurnItemCounts"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -209,6 +224,12 @@ describe("V2 preview upgrade", () => {
         [77, "RepairBooleanSettledOverride"],
         [78, "DropOrchestrationEventCorrelationIndex"],
         [79, "DelegatedRecoveryIndexes"],
+        [80, "ScheduledTaskThreadMode"],
+        [81, "ProjectionMessageSearchText"],
+        [82, "TurnItemConversationIndex"],
+        [83, "CommandReadIndexes"],
+        [84, "LastExecutedRunIndex"],
+        [85, "TurnItemCounts"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
