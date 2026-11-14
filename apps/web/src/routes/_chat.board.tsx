@@ -227,9 +227,11 @@ function ThreadBoard() {
                             aria-current={isSelected ? "true" : undefined}
                             onClick={() => select(thread)}
                             className={cn(
-                              "block w-full rounded-lg px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                              isSelected &&
-                                "bg-accent light:ring-1 light:ring-inset light:ring-border/70",
+                              "block w-full rounded-lg px-3 py-2 text-left outline-none hover:bg-accent/50",
+                              // Focus follows the selection, so the highlight already marks it.
+                              isSelected
+                                ? "bg-accent light:ring-1 light:ring-inset light:ring-border/70"
+                                : "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                             )}
                           >
                             <div className="flex items-start gap-2">

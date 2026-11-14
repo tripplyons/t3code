@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { useRef, useState, type FocusEvent, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useQuietThreadProjection } from "../state/entities";
@@ -60,6 +60,17 @@ export function BoardFocusCard({
   const approval = pending.activePendingApproval;
   const approvalChoices = boardApprovalChoices(approval?.options ?? DEFAULT_APPROVAL_OPTIONS);
 
+  const articleRef = useRef<HTMLElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Moves DOM focus while this card's nodes still exist.
+  useLayoutEffect(() => {
+    const article = articleRef.current;
+    // Switching threads remounts the card. Hand focus to the list first, or workspace focus
+    // recovery refocuses the new card's conversation region and draws its keyboard ring.
+    return () => {
+      if (article?.contains(document.activeElement)) focusSelectedRow();
+    };
+  }, []);
+
   const onBlur = (event: FocusEvent<HTMLDivElement>) => {
     // Leaving the window keeps the editor active; portaled composer menus still count as inside.
     if (!isInComposer(event.target) || !document.hasFocus()) return;
@@ -80,7 +91,7 @@ export function BoardFocusCard({
   });
 
   return (
-    <article aria-label={thread.title} className="flex min-h-0 flex-1 flex-col">
+    <article ref={articleRef} aria-label={thread.title} className="flex min-h-0 flex-1 flex-col">
       {error ? <p className="px-4 pt-2 text-sm text-destructive-foreground">{error}</p> : null}
       <div
         data-board-composer
