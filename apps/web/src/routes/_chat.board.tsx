@@ -1,7 +1,7 @@
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { BoardFocusCard } from "../components/BoardFocusCard";
@@ -91,6 +91,23 @@ function ThreadBoard() {
   const rows = sections.flatMap((section) => (openSections.has(section.id) ? section.threads : []));
   const selected = resolveBoardSelection(rows, rowKey, selection);
   const selectedKey = selected ? rowKey(selected) : null;
+  const hasSelection = selectedKey !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Claims DOM focus for the list when the board appears.
+  useLayoutEffect(() => {
+    // Leaving a page drops its focus; recovery would land on the hidden composer's region
+    // and draw its keyboard ring. Start the keyboard on the selected row instead.
+    const active = document.activeElement;
+    const root = document.querySelector("[data-board-root]");
+    if (
+      hasSelection &&
+      (!active ||
+        active === document.body ||
+        (root?.contains(active) && active.hasAttribute("data-workspace-area")))
+    )
+      document
+        .querySelector<HTMLElement>("[data-board-row][aria-current]")
+        ?.focus({ preventScroll: true });
+  }, [hasSelection]);
   const selectedCapabilities = selected
     ? serverConfigs.get(selected.environmentId)?.environment.capabilities
     : undefined;
@@ -163,12 +180,12 @@ function ThreadBoard() {
       </WorkspacePageHeader>
       <div
         data-board-root
-        className="grid min-h-0 flex-1 grid-cols-1 content-start overflow-auto bg-background lg:grid-cols-[minmax(18rem,26rem)_1fr] lg:content-normal lg:overflow-hidden"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background lg:grid lg:grid-cols-[minmax(18rem,26rem)_1fr]"
       >
         <nav
           aria-label="Board threads"
           data-board-nav
-          className="border-b p-3 lg:min-h-0 lg:overflow-auto lg:border-r lg:border-b-0"
+          className="max-h-[45%] shrink-0 overflow-auto border-b px-3 pt-3 lg:max-h-none lg:min-h-0 lg:border-r lg:border-b-0"
         >
           {!bootstrapped && (
             <p role="status" className="mb-3 px-2 text-sm text-muted-foreground">
@@ -257,7 +274,7 @@ function ThreadBoard() {
               </section>
             );
           })}
-          <div className="sticky bottom-0 -mx-3 -mb-3 mt-4 flex flex-wrap gap-2 border-t bg-background p-3">
+          <div className="sticky bottom-0 -mx-3 mt-4 flex flex-wrap gap-2 border-t border-inherit bg-background p-3">
             {selected ? (
               <BoardThreadActions
                 key={selectedKey}
@@ -280,8 +297,9 @@ function ThreadBoard() {
             </Button>
           </div>
         </nav>
-        {/* The timeline is virtualized, so the pane needs a bounded height even when stacked. */}
-        <div className="flex h-[85dvh] min-h-0 flex-col lg:h-auto">
+        {/* Stacked, the list and the conversation split the height: the timeline holds its own
+            wheel scroll, so a page that scrolls past it could never reach the pane's bottom. */}
+        <div className="flex min-h-0 flex-1 flex-col">
           {selected ? (
             <BoardFocusCard
               key={selectedKey}
