@@ -47,6 +47,8 @@ export interface TimelineRowSharedState {
   pendingApprovals: ReadonlyMap<RuntimeRequestId, PendingApproval>;
   respondingRequestIds: ReadonlyArray<RuntimeRequestId>;
   canOperateThread: boolean;
+  /** The approval the board's number keys answer; its buttons show their keys. */
+  approvalShortcutRequestId: RuntimeRequestId | null;
   onRespondToApproval:
     | ((requestId: RuntimeRequestId, decision: ProviderApprovalDecision) => Promise<unknown>)
     | undefined;

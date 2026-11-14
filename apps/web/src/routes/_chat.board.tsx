@@ -4,9 +4,10 @@ import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
-import { buildBoardPreviewIndex } from "../components/BoardActivityPreviews.logic";
 import { BoardFocusCard } from "../components/BoardFocusCard";
+import { BoardThreadActions } from "../components/BoardThreadActions";
 import {
+  buildBoardPreviewIndex,
   buildThreadBoard,
   resolveBoardSelection,
   type BoardSection,
@@ -57,6 +58,8 @@ function ThreadBoard() {
     () => new Set(["inbox", "working", "idle"]),
   );
   const [selection, setSelection] = useState<{ key: string; index: number } | null>(null);
+  // Keyed by thread so moving to another row starts with its composer hidden again.
+  const [composerFocusKey, setComposerFocusKey] = useState<string | null>(null);
   const now = new Date(wakeTime).toISOString();
   const sections = buildThreadBoard(threads, {
     projectKey,
@@ -87,9 +90,15 @@ function ThreadBoard() {
   );
   const rows = sections.flatMap((section) => (openSections.has(section.id) ? section.threads : []));
   const selected = resolveBoardSelection(rows, rowKey, selection);
+  const selectedKey = selected ? rowKey(selected) : null;
   const selectedCapabilities = selected
     ? serverConfigs.get(selected.environmentId)?.environment.capabilities
     : undefined;
+  const reply = () => {
+    if (selectedKey === null) return;
+    flushSync(() => setComposerFocusKey(selectedKey));
+    document.querySelector<HTMLElement>("[data-board-composer] [contenteditable='true']")?.focus();
+  };
 
   const select = (thread: SidebarThreadSummary) => {
     const key = rowKey(thread);
@@ -104,9 +113,10 @@ function ThreadBoard() {
       flushSync(() => setOpenSections(nextOpen));
     }
     setSelection({ key, index: visibleRows.findIndex((row) => rowKey(row) === key) });
-    document.querySelector(`[data-board-row="${CSS.escape(key)}"]`)?.scrollIntoView({
-      block: "nearest",
-    });
+    const row = document.querySelector<HTMLElement>(`[data-board-row="${CSS.escape(key)}"]`);
+    // Keep the focus ring on the highlighted row when the keyboard is already in the list.
+    if (document.activeElement?.hasAttribute("data-board-row")) row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: "nearest" });
   };
   const move = (step: 1 | -1) => {
     const allRows = sections.flatMap((section) => section.threads);
@@ -205,11 +215,14 @@ function ThreadBoard() {
                       );
                       const jumpLabel = jumpLabelByKey.get(key);
                       const preview = latestPreviewText(thread);
-                      const isSelected = selected !== null && rowKey(selected) === key;
+                      const isSelected = selectedKey === key;
                       return (
                         <li key={key}>
                           <button
                             type="button"
+                            // A row remounts when its thread changes section; the id lets
+                            // workspace focus recovery return focus to it.
+                            id={`board-row-${key}`}
                             data-board-row={key}
                             aria-current={isSelected ? "true" : undefined}
                             onClick={() => select(thread)}
@@ -242,7 +255,18 @@ function ThreadBoard() {
               </section>
             );
           })}
-          <div className="mt-4 flex flex-wrap gap-2 px-2">
+          <div className="sticky bottom-0 -mx-3 -mb-3 mt-4 flex flex-wrap gap-2 border-t bg-background p-3">
+            {selected ? (
+              <BoardThreadActions
+                key={selectedKey}
+                thread={selected}
+                settlementSupported={selectedCapabilities?.threadSettlement === true}
+                snoozable={
+                  selectedCapabilities?.threadSnooze === true && canSnooze(selected, { now })
+                }
+                onReply={reply}
+              />
+            ) : null}
             <Button size="sm" variant="outline" onClick={() => move(1)}>
               Next <Kbd>J</Kbd>
             </Button>
@@ -254,22 +278,17 @@ function ThreadBoard() {
             </Button>
           </div>
         </nav>
-        <div className="p-4 sm:p-6 lg:min-h-0 lg:overflow-auto">
+        {/* The timeline is virtualized, so the pane needs a bounded height even when stacked. */}
+        <div className="flex h-[85dvh] min-h-0 flex-col lg:h-auto">
           {selected ? (
             <BoardFocusCard
-              key={rowKey(selected)}
+              key={selectedKey}
               thread={selected}
-              project={projectByKey.get(`${selected.environmentId}:${selected.projectId}`)}
-              environmentLabel={
-                environmentById.get(selected.environmentId)?.label ?? selected.environmentId
-              }
-              settlementSupported={selectedCapabilities?.threadSettlement === true}
-              snoozable={
-                selectedCapabilities?.threadSnooze === true && canSnooze(selected, { now })
-              }
+              composerFocused={composerFocusKey === selectedKey}
+              onComposerFocusChange={(focused) => setComposerFocusKey(focused ? selectedKey : null)}
             />
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="p-4 text-sm text-muted-foreground sm:p-6">
               {bootstrapped ? "Nothing needs you." : null}
             </p>
           )}

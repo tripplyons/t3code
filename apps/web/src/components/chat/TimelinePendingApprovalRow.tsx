@@ -5,9 +5,13 @@ import {
 import { ShieldIcon } from "lucide-react";
 import { memo, use } from "react";
 import { type PendingApproval } from "../../session-logic";
+import { boardApprovalChoices } from "../threadBoard";
 import { InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
+import {
+  ComposerPendingApprovalActions,
+  DEFAULT_APPROVAL_OPTIONS,
+} from "./ComposerPendingApprovalActions";
 import { ToolActivityIconView, type WorkEntryIconName } from "./TimelineToolActivityIcon";
 import { TimelineRowCtx } from "./timelineRowContext";
 import { WorkLogRow } from "./WorkLog";
@@ -36,9 +40,18 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
 }: {
   approval: PendingApproval;
 }) {
-  const { respondingRequestIds, canOperateThread, onRespondToApproval } = use(TimelineRowCtx);
+  const { respondingRequestIds, canOperateThread, approvalShortcutRequestId, onRespondToApproval } =
+    use(TimelineRowCtx);
   const presentation = APPROVAL_PRESENTATION[approval.requestKind];
   const canRespond = approval.responseCapability === "live";
+  const shortcutKeys =
+    approvalShortcutRequestId === approval.requestId
+      ? new Map(
+          boardApprovalChoices(approval.options ?? DEFAULT_APPROVAL_OPTIONS).map(
+            (option, index) => [option.decision, String(index + 1)],
+          ),
+        )
+      : undefined;
   return (
     <WorkLogRow
       role="group"
@@ -90,6 +103,7 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
                     isResponding={respondingRequestIds.includes(approval.requestId)}
                     canRespond={canRespond}
                     options={approval.options}
+                    shortcutKeys={shortcutKeys}
                     onRespondToApproval={onRespondToApproval}
                   />
                 </>

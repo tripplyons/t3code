@@ -6,7 +6,8 @@ import {
 import { memo } from "react";
 import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Kbd } from "../ui/kbd";
+import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
@@ -17,6 +18,8 @@ interface ComposerPendingApprovalActionsProps {
   canRespond: boolean;
   disabled?: boolean;
   options?: ReadonlyArray<ProviderApprovalOption> | undefined;
+  /** The key that answers with each decision, shown beside its label. */
+  shortcutKeys?: ReadonlyMap<ProviderApprovalDecision, string> | undefined;
   onRespondToApproval: (
     requestId: RuntimeRequestId,
     decision: ProviderApprovalDecision,
@@ -37,6 +40,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
   canRespond,
   disabled = false,
   options = DEFAULT_APPROVAL_OPTIONS,
+  shortcutKeys,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
   const primaryOptions = options.filter(
@@ -64,6 +68,9 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
             <span className={presentation === "inline" ? "whitespace-normal" : "max-w-40 truncate"}>
               {option.label}
             </span>
+            {shortcutKeys?.has(option.decision) ? (
+              <Kbd>{shortcutKeys.get(option.decision)}</Kbd>
+            ) : null}
           </>
         );
         const button =
@@ -122,6 +129,9 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
                 >
                   {option.warning ? <TriangleAlertIcon className="size-3 text-warning" /> : null}
                   <span className="min-w-0 whitespace-normal wrap-break-word">{option.label}</span>
+                  {shortcutKeys?.has(option.decision) ? (
+                    <MenuShortcut>{shortcutKeys.get(option.decision)}</MenuShortcut>
+                  ) : null}
                 </MenuItem>
               );
               return option.warning ? (

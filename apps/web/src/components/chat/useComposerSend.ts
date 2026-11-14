@@ -255,6 +255,8 @@ interface ComposerSendInput {
   }) => Promise<AtomCommandResult<void, unknown>>;
   /** Links a checked-out pull request to its thread; best effort, failures only logged. */
   readonly linkCheckoutPullRequest: (threadRef: ScopedThreadRef, url: string) => void;
+  /** Runs once a message leaves the composer and its draft clears. */
+  readonly onSent?: (() => void) | undefined;
 }
 
 /**
@@ -335,6 +337,7 @@ export function useComposerSend(input: ComposerSendInput) {
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
     linkCheckoutPullRequest,
+    onSent,
   } = input;
   const linkedEnvironments = useLinkedEnvironments(environmentId);
   const handleNewThread = useNewThreadHandler();
@@ -1042,6 +1045,7 @@ export function useComposerSend(input: ComposerSendInput) {
           promptRef.current = "";
           clearComposerDraftContent(composerDraftTarget);
           composerRef.current?.resetCursorState();
+          onSent?.();
         }
         return;
       }
@@ -1179,6 +1183,7 @@ export function useComposerSend(input: ComposerSendInput) {
     promptRef.current = "";
     clearComposerDraftContent(composerDraftTarget);
     composerRef.current?.resetCursorState();
+    onSent?.();
 
     const title = deriveThreadTitleSeed({
       text: messageTextForSend,

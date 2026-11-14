@@ -66,9 +66,11 @@ and idle threads sit in their own sections below. Filter by project across
 connected environments. Snoozed, settled, and archived threads are hidden. Snoozed
 threads return when they wake.
 
-Select a thread to see what its agent did and what it needs, and act without
-leaving the board. The card includes the thread's full composer, so you can reply,
-attach or drop files, and implement a ready plan there. Press `J` and `K` to move,
+Select a thread to read its full conversation beside the list and act without
+leaving the board. The actions for the selected thread sit below the list. Reply
+opens the thread's full composer, so you can reply, attach or drop files, and
+implement a ready plan there. Sending closes the composer and returns you to the
+list. Press `J` and `K` to move,
 and the number beside a choice to approve, decline, or answer a question. When a
 question allows several choices, the numbers toggle them and `Enter` submits the
 answer. Press `R` to focus the composer and `Esc` to leave it, `E` to settle, `L`

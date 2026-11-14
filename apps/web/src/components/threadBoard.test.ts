@@ -7,12 +7,14 @@ import {
   ThreadId,
   RunId,
   OrchestrationV2ThreadShell,
+  type ThreadActivityPreview,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import type { SidebarThreadSummary } from "../types";
 import { sortThreadsForSidebar } from "./Sidebar.logic";
 import {
   boardApprovalChoices,
+  buildBoardPreviewIndex,
   buildThreadBoard,
   resolveBoardSelection,
   resolveThreadBoardSection,
@@ -382,5 +384,45 @@ describe("boardApprovalChoices", () => {
       "cancel",
       "acceptForSession",
     ]);
+  });
+});
+
+function preview(
+  createdAt: string,
+  text: string,
+  kind: ThreadActivityPreview["kind"] = "agent",
+): ThreadActivityPreview {
+  return { kind, text, createdAt };
+}
+
+// The server sends previews newest first; the board reads them oldest first.
+const newestFirst = [
+  preview("2026-09-19T12:00:02.000Z", "third"),
+  preview("2026-09-19T12:00:01.000Z", "second"),
+  preview("2026-09-19T12:00:00.000Z", "first"),
+];
+
+describe("buildBoardPreviewIndex", () => {
+  it("orders previews oldest first and drops tool previews", () => {
+    const index = buildBoardPreviewIndex([
+      preview("2026-09-19T12:00:02.000Z", "ran tests", "tool"),
+      ...newestFirst,
+    ]);
+    expect([...index.values()].map((entry) => entry.text)).toEqual(["first", "second", "third"]);
+  });
+
+  it("keys a preview by arrival so streaming text does not change its identity", () => {
+    const streaming = [preview("2026-09-19T12:00:02.000Z", "thir"), ...newestFirst.slice(1)];
+    expect([...buildBoardPreviewIndex(streaming).keys()]).toEqual([
+      ...buildBoardPreviewIndex(newestFirst).keys(),
+    ]);
+  });
+
+  it("separates previews that share a timestamp and kind", () => {
+    const index = buildBoardPreviewIndex([
+      preview("2026-09-19T12:00:00.000Z", "b"),
+      preview("2026-09-19T12:00:00.000Z", "a"),
+    ]);
+    expect(index.size).toBe(2);
   });
 });

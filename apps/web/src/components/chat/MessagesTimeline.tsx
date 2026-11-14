@@ -17,6 +17,7 @@ import {
   type RunAttemptId,
   type ServerProviderSkill,
   type RunId,
+  type RuntimeRequestId,
   ThreadId,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -221,6 +222,7 @@ interface MessagesTimelineProps {
   heldApprovalRequestIds?: ReadonlySet<string> | undefined;
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
   canOperateThread?: boolean;
+  approvalShortcutRequestId?: RuntimeRequestId | null;
   onRespondToApproval?: TimelineRowSharedState["onRespondToApproval"];
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
@@ -343,6 +345,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   heldApprovalRequestIds,
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
   canOperateThread = false,
+  approvalShortcutRequestId = null,
   onRespondToApproval,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
@@ -1089,6 +1092,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     pendingApprovals: pendingApprovalsByRequestId,
     respondingRequestIds,
     canOperateThread,
+    approvalShortcutRequestId,
     onRespondToApproval,
     citationRequest: readyCitationRequest,
     onReplyToResponse,

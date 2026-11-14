@@ -1,6 +1,11 @@
 import { resolveThreadBoardGroup } from "@t3tools/client-runtime/state/thread-sort";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import type { EnvironmentId, ProviderApprovalOption, ServerConfig } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProviderApprovalOption,
+  ServerConfig,
+  ThreadActivityPreview,
+} from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../types";
 import { filterSidebarV2VisibleThreads, sortThreadsForSidebar } from "./Sidebar.logic";
@@ -26,16 +31,6 @@ export function resolveThreadBoardSection(
   if (group === "needs-you") return "inbox";
   if (group === "idle" && options.settlementSupported) return "inbox";
   return group;
-}
-
-export function threadBoardStatus(thread: SidebarThreadSummary) {
-  if (thread.hasPendingApprovals) return "Needs approval";
-  if (thread.hasPendingUserInput) return "Has a question";
-  if (thread.pendingSubagentRequest != null) return "Subagent needs you";
-  if (thread.runtime?.status === "failed") return "Failed";
-  if (resolveThreadBoardGroup(thread) === "working") return "Working";
-  if (thread.hasActionableProposedPlan) return "Plan ready";
-  return "Finished";
 }
 
 export function buildThreadBoard(
@@ -111,4 +106,23 @@ export function boardApprovalChoices(
     return index === -1 ? APPROVAL_KEY_ORDER.length : index;
   };
   return options.toSorted((left, right) => rank(left) - rank(right)).slice(0, 9);
+}
+
+/**
+ * A board row's agent and thinking previews, oldest first, keyed by identity
+ * rather than position. Tool previews are left out. A key ignores the text so the
+ * newest entry keeps its identity while the agent streams into it, and repeated
+ * timestamps take a suffix so a burst still yields distinct keys.
+ */
+export function buildBoardPreviewIndex(
+  previews: readonly ThreadActivityPreview[] | undefined,
+): ReadonlyMap<string, ThreadActivityPreview> {
+  const index = new Map<string, ThreadActivityPreview>();
+  for (const preview of (previews ?? []).filter((entry) => entry.kind !== "tool").toReversed()) {
+    const base = `${preview.createdAt}|${preview.kind}`;
+    let key = base;
+    for (let repeat = 1; index.has(key); repeat += 1) key = `${base}|${repeat}`;
+    index.set(key, preview);
+  }
+  return index;
 }

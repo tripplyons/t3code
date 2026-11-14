@@ -407,10 +407,12 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
       embedded?: SideChatParentPanel;
-      /** Render only the composer, unfocused and without page shortcuts, for embedding. */
-      composerOnly?: boolean;
-      /** With composerOnly, hide the composer while it has no draft and nothing waits on it. */
+      /** The board's focus pane: timeline and composer, without page chrome, panels, or shortcuts. */
+      board?: boolean;
+      /** With board, hide the composer while it has no draft and nothing waits on it. */
       hideIdleComposer?: boolean;
+      /** With board, runs once a message leaves the composer. */
+      onSent?: () => void;
       routeKind: "server";
       draftId?: never;
     }
@@ -438,8 +440,11 @@ export default function ChatView(props: ChatViewProps) {
     embedded: parentPanel,
   } = props;
   const embedded = parentPanel !== undefined;
-  const composerOnly = routeKind === "server" && props.composerOnly === true;
-  const hideIdleComposer = composerOnly && props.hideIdleComposer === true;
+  const board = routeKind === "server" && props.board === true;
+  const hideIdleComposer = board && props.hideIdleComposer === true;
+  const onSent = board ? props.onSent : undefined;
+  // Side chats and the board host only the conversation; the page around them owns the rest.
+  const chromeless = embedded || board;
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -1110,7 +1115,7 @@ export default function ChatView(props: ChatViewProps) {
   const canMaximizeRightPanel = rightPanelOpen;
   // An embedded side chat has no panel; a stale maximized flag would hide its own column.
   const rightPanelMaximized =
-    !embedded && canMaximizeRightPanel && rightPanelState.maximized === true;
+    !chromeless && canMaximizeRightPanel && rightPanelState.maximized === true;
   const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
   const [chatCanvasStore] = useState(createChatCanvasStore);
@@ -1858,9 +1863,8 @@ export default function ChatView(props: ChatViewProps) {
   const onInterruptStable = useStableCallback(onInterrupt);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window listener for the desktop snapshot event that focuses the composer
   useEffect(
-    () =>
-      embedded || composerOnly ? undefined : subscribeSnapShotComposerFocus(focusComposerStable),
-    [composerOnly, embedded, focusComposerStable],
+    () => (chromeless ? undefined : subscribeSnapShotComposerFocus(focusComposerStable)),
+    [chromeless, focusComposerStable],
   );
   const scheduleComposerFocus = () => {
     window.requestAnimationFrame(() => {
@@ -2020,8 +2024,8 @@ export default function ChatView(props: ChatViewProps) {
     : linkedThreadPullRequestKey;
   const activeRunningTurnId = activeRuntime?.activeRunId ?? null;
   useProactivePanels({
-    threadRef: isServerThread && !embedded ? activeThreadRef : null,
-    enabled: settings.proactivePanelsEnabled && !shouldUsePlanSidebarSheet && !embedded,
+    threadRef: isServerThread && !chromeless ? activeThreadRef : null,
+    enabled: settings.proactivePanelsEnabled && !shouldUsePlanSidebarSheet && !chromeless,
     settingsHydrated: clientSettingsHydrated,
     threadDetailLoading,
     runningTurnId: activeRunningTurnId,
@@ -2152,20 +2156,13 @@ export default function ChatView(props: ChatViewProps) {
 
   useFocusComposerOnThreadOpen(
     activeThread?.id,
-    !embedded && !composerOnly && !terminalUiState.terminalOpen,
+    !chromeless && !terminalUiState.terminalOpen,
     focusComposerStable,
   );
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refocuses the composer after the window regains focus
   useEffect(() => {
-    if (
-      embedded ||
-      composerOnly ||
-      !activeThread?.id ||
-      terminalUiState.terminalOpen ||
-      isMobileViewport
-    )
-      return;
+    if (chromeless || !activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -2190,8 +2187,7 @@ export default function ChatView(props: ChatViewProps) {
     };
   }, [
     activeThread?.id,
-    composerOnly,
-    embedded,
+    chromeless,
     focusComposerStable,
     isMobileViewport,
     terminalUiState.terminalOpen,
@@ -2401,7 +2397,7 @@ export default function ChatView(props: ChatViewProps) {
     pullRequestPanelTarget,
     threadPanelPresentation,
     isServerThread,
-    embedded,
+    embedded: chromeless,
     isGitRepo,
     browserAvailable,
     canOperatePreview,
@@ -2702,8 +2698,8 @@ export default function ChatView(props: ChatViewProps) {
   // composer effect above.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
   useEffect(() => {
-    if (activeThreadRef && !embedded) return focusTerminalOnThreadEnter(activeThreadRef);
-  }, [activeThreadRef, embedded]);
+    if (activeThreadRef && !chromeless) return focusTerminalOnThreadEnter(activeThreadRef);
+  }, [activeThreadRef, chromeless]);
 
   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
     terminalFocus: getTerminalFocusOwner() !== null,
@@ -2734,7 +2730,7 @@ export default function ChatView(props: ChatViewProps) {
   });
 
   useChatShortcuts({
-    enabled: activeThreadId !== null && !backgroundThread && !composerOnly,
+    enabled: activeThreadId !== null && !backgroundThread && !board,
     embedded,
     composerElement: composerOverlayElement,
     keybindings,
@@ -2791,12 +2787,12 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
   useEffect(() => {
-    if (embedded) return;
+    if (chromeless) return;
     return window.desktopBridge?.onMenuAction((action) => {
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
-  }, [embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [chromeless, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
   usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
   // A delegated task is a remote thread's subagent.
@@ -2804,7 +2800,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
   // Side chats do not nest or start from subagents, and older servers would fork a listed thread.
   const sideChatsOffered =
-    !embedded &&
+    !chromeless &&
     canOperateThread &&
     activeThread?.lineage.sideChat !== true &&
     !isSubagentThread &&
@@ -2990,6 +2986,7 @@ export default function ChatView(props: ChatViewProps) {
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
     linkCheckoutPullRequest,
+    onSent,
   });
 
   const onWorktreeSetupWorkLocally = () => {
@@ -3215,7 +3212,7 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   if (!activeThread) {
-    return embedded ? null : <NoActiveThreadState />;
+    return chromeless ? null : <NoActiveThreadState />;
   }
 
   const rightPanelContent = activeThreadRef ? (
@@ -3377,7 +3374,8 @@ export default function ChatView(props: ChatViewProps) {
                   activeThread={activeThread}
                   activeThreadRuns={serverProjection?.runs ?? EMPTY_RUNS}
                   promptHistoryEntries={timelineEntries}
-                  forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
+                  // The board opens the composer only to reply, so a collapsed pill would be one more tap.
+                  forceExpandedOnMobile={board || (forceExpandedMobileComposer && isDraftHeroState)}
                   projectSelectionRequired={isLocalDraftThread && activeProject === null}
                   phase={phase}
                   canSteer={!compactionBlocksSteer}
@@ -3565,34 +3563,21 @@ export default function ChatView(props: ChatViewProps) {
     </>
   );
 
-  const composerIdle = !routeThreadHasUnsentDraft && pendingUserInputs.length === 0;
-  const content = composerOnly ? (
-    <div
-      data-chat-workspace-drop-target="true"
-      className="relative flex min-w-0 flex-col gap-2"
-      onDragEnter={workspaceFileDropHandlers.onDragEnter}
-      onDragOver={workspaceFileDropHandlers.onDragOver}
-      onDragLeave={workspaceFileDropHandlers.onDragLeave}
-      onDrop={workspaceFileDropHandlers.onDrop}
-    >
-      {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
-      {threadErrorBanner}
-      <div hidden={hideIdleComposer && composerIdle}>{composerShell}</div>
-      <ExpandedImageDialogHost threadKey={routeThreadKey} />
-    </div>
-  ) : (
+  const composerHidden =
+    hideIdleComposer && !routeThreadHasUnsentDraft && pendingUserInputs.length === 0;
+  const content = (
     <div
       ref={setWorkspaceLayoutElement}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
-      {embedded ? null : (
+      {chromeless ? null : (
         <DeviceSetupDialogHost
           threadKey={activeThreadKey}
           threadRef={activeThreadRef}
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
+      {rightPanelControlsAtRoot && !chromeless ? panelLayoutControls : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -3602,7 +3587,7 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column
         inert={rightPanelMaximized}
       >
-        {embedded ? null : (
+        {chromeless ? null : (
           <header
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
@@ -3679,6 +3664,9 @@ export default function ChatView(props: ChatViewProps) {
                   respondingRequestIds={respondingRequestIds}
                   onRespondToApproval={onRespondToApprovalStable}
                   canOperateThread={canOperateThread}
+                  approvalShortcutRequestId={
+                    board ? (activePendingApproval?.requestId ?? null) : null
+                  }
                   threadDetailRef={routeThreadDetailRef}
                   entriesInput={timelineEntriesInput}
                   draftEntries={isServerThread ? null : draftTimelineEntries}
@@ -3689,7 +3677,7 @@ export default function ChatView(props: ChatViewProps) {
                   citationHistory={citationHistory}
                   onCiteAssistantText={citeAssistantTextStable}
                   onReplyToResponse={replyToResponseStable}
-                  {...(activeProject
+                  {...(activeProject && !board
                     ? { onRunShellCommand: parentPanel?.runShellCommand ?? runShellCommandStable }
                     : {})}
                   isWorking={isWorking}
@@ -3735,9 +3723,12 @@ export default function ChatView(props: ChatViewProps) {
                   routeThreadKey={displayedTimelineKey}
                   displayThreadKey={displayedTimelineKey}
                   announceTurnStatus={!isProviderSubagent}
-                  onOpenToolDiff={parentPanel?.openToolDiff ?? onOpenToolDiffStable}
+                  // The board has no diff panel or terminal; its rows open the full thread for those.
+                  {...(board
+                    ? {}
+                    : { onOpenToolDiff: parentPanel?.openToolDiff ?? onOpenToolDiffStable })}
                   // Side chat runs keep no checkpoints to diff, and a fork would promote the side chat.
-                  {...(embedded
+                  {...(chromeless
                     ? {}
                     : { onOpenTurnDiff: onOpenTurnDiffStable, onForkFromRun: onForkFromRunStable })}
                   onOpenThread={onOpenRelatedThreadStable}
@@ -3761,7 +3752,7 @@ export default function ChatView(props: ChatViewProps) {
                   anchorMessageId={timelineAnchorMessageId}
                   onAnchorReady={onTimelineAnchorReadyStable}
                   onAnchorSizeChanged={onTimelineAnchorSizeChangedStable}
-                  contentInsetEndAdjustment={composerTimelineInset}
+                  contentInsetEndAdjustment={composerHidden ? 0 : composerTimelineInset}
                   liveFollowEnabled={timelineLiveFollowEnabled}
                   onIsAtEndChange={onIsAtEndChangeStable}
                   onViewportAttach={attachTimelineViewport}
@@ -3777,7 +3768,7 @@ export default function ChatView(props: ChatViewProps) {
 
               {showScrollToBottom && !isThreadFindActive && (
                 <ScrollToEndButton
-                  bottom={scrollToEndClearance + 4}
+                  bottom={(composerHidden ? 0 : scrollToEndClearance) + 4}
                   summary={scrollToEndSummary}
                   onScrollToEnd={() => scrollToEnd(true)}
                 />
@@ -3798,7 +3789,11 @@ export default function ChatView(props: ChatViewProps) {
                   : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
               }
             >
-              <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
+              <div
+                ref={draftHeroTransitionGroupRef}
+                className="chat-composer-lane w-full"
+                hidden={composerHidden}
+              >
                 <div
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
@@ -3840,10 +3835,13 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser && !embedded ? (
+            {canOperatePreview &&
+            activeThreadRef &&
+            activeEnvironmentServerBrowser &&
+            !chromeless ? (
               <PreviewSessionSync threadRef={activeThreadRef} />
             ) : null}
-            {activeThreadRef && shownPreviewMiniPlayer && !embedded ? (
+            {activeThreadRef && shownPreviewMiniPlayer && !chromeless ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(shownPreviewMiniPlayer.source)}`}
                 threadRef={activeThreadRef}
@@ -3851,7 +3849,7 @@ export default function ChatView(props: ChatViewProps) {
               />
             ) : null}
 
-            {embedded ? null : (
+            {chromeless ? null : (
               <>
                 <BranchRestoreConfirmHost
                   threadKey={activeThreadKey}
@@ -3944,7 +3942,7 @@ export default function ChatView(props: ChatViewProps) {
           </ThreadFindCanvas>
         </div>
 
-        {embedded ? null : (
+        {chromeless ? null : (
           <ChatTerminalDrawers
             activeThreadKey={activeThreadKey}
             activeTerminalOpen={Boolean(terminalUiState.terminalOpen)}
@@ -3960,7 +3958,7 @@ export default function ChatView(props: ChatViewProps) {
         )}
       </div>
 
-      {rightPanelPresent && activeThreadRef && !embedded ? (
+      {rightPanelPresent && activeThreadRef && !chromeless ? (
         <ChatRightPanel
           sheet={shouldUsePlanSidebarSheet}
           workspaceLayoutElement={workspaceLayoutElement}
@@ -4029,7 +4027,7 @@ export default function ChatView(props: ChatViewProps) {
         checkpoints={serverProjection?.checkpoints}
         onConfirm={onConfirmRevertStable}
       />
-      {embedded ? null : <LinkPullRequestDialogHost />}
+      {chromeless ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       <ExpandedImageDialogHost threadKey={routeThreadKey} />
     </div>
