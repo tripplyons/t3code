@@ -2053,15 +2053,17 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
-it.effect("keeps ingesting a failed root's background item when its work continues", () =>
-  Effect.gen(function* () {
-    const observed = yield* runBackgroundItemScenario("bg-failed-continues", (ids) => [
-      backgroundTurnItemEvent(ids, "command_execution", "running", 1),
-      { ...rootTerminalEvent(ids, "failed"), childTurnsContinue: true },
-      backgroundTurnItemEvent(ids, "command_execution", "completed", 2),
-    ]);
-    assert.deepEqual(observed, ["turn_item:running", "root-finalized", "turn_item:completed"]);
-  }),
+it.effect.each(["failed", "interrupted"] as const)(
+  "keeps ingesting background items after a %s root when its work continues",
+  (status) =>
+    Effect.gen(function* () {
+      const observed = yield* runBackgroundItemScenario(`bg-${status}-continues`, (ids) => [
+        backgroundTurnItemEvent(ids, "command_execution", "running", 1),
+        { ...rootTerminalEvent(ids, status), childTurnsContinue: true },
+        backgroundTurnItemEvent(ids, "command_execution", "completed", 2),
+      ]);
+      assert.deepEqual(observed, ["turn_item:running", "root-finalized", "turn_item:completed"]);
+    }),
 );
 
 it.effect("does not pin ingestion on background items when the root turn is interrupted", () =>

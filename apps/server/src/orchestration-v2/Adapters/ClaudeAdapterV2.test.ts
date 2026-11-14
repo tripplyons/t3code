@@ -16242,6 +16242,95 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("a user's Stop ends the turn but leaves its subagent running", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let closes = 0;
+        const backgrounded: Array<string> = [];
+        let acknowledge = Effect.void;
+        const harness = yield* makeWakeHarnessWithOptions({
+          interrupt: Effect.suspend(() => acknowledge),
+          backgroundTasks: (toolUseId) =>
+            Effect.sync(() => {
+              backgrounded.push(toolUseId);
+              return true;
+            }),
+          close: (messages) =>
+            Effect.sync(() => {
+              closes++;
+            }).pipe(Effect.andThen(Queue.shutdown(messages))),
+        });
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("stop-spares-subagent"),
+            text: "Audit the last commits.",
+            attachments: [],
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeSubagentTaskStartedFrame({
+            taskId: "spared-agent",
+            toolUseId: "toolu-spared-agent",
+            uuid: "00000000-0000-4000-8000-000000002901",
+          }),
+        );
+        const subagentStatus = () => {
+          const latest = harness.events.findLast(
+            (event) =>
+              event.type === "subagent.updated" &&
+              event.subagent.nativeTaskRef?.nativeId === "spared-agent",
+          );
+          return latest?.type === "subagent.updated" ? latest.subagent.status : undefined;
+        };
+        yield* harness.until(() => subagentStatus() === "running");
+        const active = harness.events.find(
+          (event) =>
+            event.type === "provider_turn.updated" && event.providerTurn.status === "running",
+        );
+        if (active?.type !== "provider_turn.updated")
+          return yield* Effect.die("Missing running native turn");
+        acknowledge = harness.offerAndWait(
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000002902",
+            result: "",
+            subtype: "error_during_execution",
+            errors: ["Error: Request was aborted."],
+            terminalReason: "aborted_tools",
+          }),
+        );
+
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: active.providerTurn.id,
+          requestRuntimeRestart: true,
+          keepBackgroundAgents: true,
+        });
+
+        const terminal = yield* Queue.take(harness.terminalReceipts);
+        assert.strictEqual(terminal.status, "interrupted");
+        assert.isTrue(
+          terminal.status === "interrupted" && terminal.childTurnsContinue === true,
+          "the run executor would stop the subagent's child turn",
+        );
+        assert.deepStrictEqual(backgrounded, ["toolu-spared-agent"]);
+        assert.strictEqual(closes, 0, "the Stop closed the process that runs the subagent");
+        assert.strictEqual(subagentStatus(), "running");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    ),
+  );
+
   it.effect("streams a background subagent's work while the root turn is idle", () =>
     Effect.scoped(
       Effect.gen(function* () {

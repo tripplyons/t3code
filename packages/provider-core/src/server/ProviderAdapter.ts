@@ -184,6 +184,8 @@ export const ProviderAdapterV2Event = Schema.Union([
     failure: Schema.Null,
     reason: Schema.optional(Schema.String),
     threadDisposition: Schema.Literals(["reusable", "broken"]),
+    /** A Stop that ended only the root turn: child turns run on and report their own terminals. */
+    childTurnsContinue: Schema.optional(Schema.Literal(true)),
   }),
   Schema.Struct({
     type: Schema.Literal("turn.terminal"),
@@ -554,6 +556,8 @@ export interface ProviderAdapterV2InterruptInput {
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly providerTurnId: ProviderTurnId;
   readonly requestRuntimeRestart?: boolean;
+  /** A user's Stop: end the running turn but leave its background agents running. */
+  readonly keepBackgroundAgents?: boolean;
 }
 
 export interface ProviderAdapterV2RuntimeRequestResponseInput {

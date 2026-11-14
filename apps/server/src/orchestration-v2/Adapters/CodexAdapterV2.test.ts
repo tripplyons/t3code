@@ -6324,6 +6324,82 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  const interruptEntry = (label: string) => {
+    const entry = interruptSubagentCommandTranscript.entries.find(
+      (candidate) => "label" in candidate && candidate.label === label,
+    );
+    if (entry === undefined) throw new Error(`Missing transcript entry ${label}`);
+    return entry;
+  };
+  const rootInterruptReplyIndex = interruptSubagentCommandTranscript.entries.findIndex(
+    (entry) => entry.type === "emit_inbound" && entry.label === "turn/interrupt/root",
+  );
+  const interruptSparingSubagentTranscript = makeCodexReplayTranscript({
+    scenario: "codex-interrupt-sparing-subagent",
+    entries: [
+      ...interruptSubagentCommandTranscript.entries.slice(0, rootInterruptReplyIndex + 1),
+      interruptEntry("turn/completed/root"),
+      interruptEntry("turn/completed/child-completed-race"),
+      { type: "runtime_exit", status: "success" },
+    ],
+  });
+
+  it.effect("a user's Stop interrupts only the root turn and leaves its subagent running", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeCodexReplayHarness(interruptSparingSubagentTranscript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-interrupt-sparing-subagent"),
+            text: INTERRUPT_PROMPT,
+          }),
+        );
+        yield* harness.until(() =>
+          harness.events.some(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.nativeItemRef?.nativeId === INTERRUPT_CHILD_COMMAND_ITEM &&
+              event.turnItem.status === "running",
+          ),
+        );
+        const providerTurnId = harness.events.find(
+          (event) => event.type === "provider_turn.updated" && event.threadId === harness.threadId,
+        );
+        if (providerTurnId?.type !== "provider_turn.updated")
+          return yield* Effect.die("Missing root provider turn");
+
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: providerTurnId.providerTurn.id,
+          keepBackgroundAgents: true,
+        });
+
+        yield* harness.awaitTerminal(1);
+        const terminal = harness.terminalEvents()[0];
+        assert.equal(terminal?.status, "interrupted");
+        assert.isTrue(
+          terminal?.status === "interrupted" && terminal.childTurnsContinue === true,
+          "the run executor would stop the subagent's child turn",
+        );
+        yield* harness.until(
+          () => harness.subagentUpdates().at(-1)?.subagent.status === "completed",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    ),
+  );
+
   const rootCompletionIndex = interruptSubagentCommandTranscript.entries.findIndex(
     (entry) => entry.type === "emit_inbound" && entry.label === "turn/completed/root",
   );

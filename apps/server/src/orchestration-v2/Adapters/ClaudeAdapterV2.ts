@@ -2052,6 +2052,8 @@ export function makeClaudeQueryOptions(input: {
         : (input.permissionMode ?? "default")),
     includePartialMessages: true,
     promptSuggestions: input.promptSuggestions === true,
+    // T3 stops subagents one at a time, so the CLI's interrupt ends only the turn.
+    perTaskStopAffordance: true,
     ...(compiledSelection.effort === undefined
       ? {}
       : {
@@ -4753,6 +4755,9 @@ interface ActiveClaudeTurnContext {
   readonly steerUuids: Set<string>;
   // Claude can run another model than requested, such as when an organization disallows it.
   executedModel: string | undefined;
+  // A user's Stop ended only the turn; its background agents outlive it as after a completed turn.
+  keepsBackgroundAgents: boolean;
+  readonly finalized: Deferred.Deferred<void>;
 }
 
 interface ActiveClaudeProviderRetry {
@@ -8605,6 +8610,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly result?: SDKResultMessage;
         }) {
           input.context.steersClosed = true;
+          const openQuery = yield* Ref.get(queryContext);
+          // Background work outlives the turn only while its process does.
+          const keepsBackgroundWork =
+            input.status === "completed" ||
+            (input.status === "interrupted" &&
+              input.context.keepsBackgroundAgents &&
+              openQuery !== null &&
+              !openQuery.stopping);
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
           if (input.status === "completed") {
             yield* assistantDeltas.flushTurn(input.context.nativeTurnId);
@@ -8640,7 +8653,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
           }
           input.context.compaction = null;
-          if (input.status !== "completed") {
+          if (!keepsBackgroundWork) {
             const liveQuery = yield* Ref.get(queryContext);
             for (const [taskId, subagent] of yield* Ref.get(sessionSubagentsByTaskId)) {
               if (
@@ -8667,7 +8680,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const runningChildThreadIds = new Set(
             [...(yield* Ref.get(sessionSubagentsByTaskId)).values()].flatMap((subagent) =>
               subagent.task.status === "running" &&
-              (input.status === "completed" ||
+              (keepsBackgroundWork ||
                 (liveQuery !== null && subagent.task.runId !== input.context.input.runId)) &&
               liveQuery?.subagentsFromEarlierProcesses.has(subagent) !== true
                 ? [subagent.childThreadId]
@@ -8833,6 +8846,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   status: input.status,
                   failure: null,
                   threadDisposition,
+                  ...(input.status === "interrupted" && keepsBackgroundWork
+                    ? { childTurnsContinue: true as const }
+                    : {}),
                 };
           yield* Effect.all(
             [
@@ -8876,6 +8892,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     if (input.status !== "failed" || (yield* Ref.get(queryContext)) === null) {
                       scheduledWakeupsByNativeThread.delete(nativeThreadId);
                     }
+                  }
+                  if (!keepsBackgroundWork) {
                     yield* clearPendingBackgroundTasksForNativeThread(nativeThreadId);
                     yield* clearNativeThreadTaskIdSet(
                       wakeEligibleBackgroundTasksByNativeThread,
@@ -8947,7 +8965,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     ...publishedPendingBackgroundTasks(nativeThreadId, roster, awaitedTaskIds),
                     ...owedWakeTasks,
                   ],
-                  status: input.status === "completed" ? "active" : "idle",
+                  status: keepsBackgroundWork ? "active" : "idle",
                   updatedAt: input.completedAt,
                 };
                 yield* rememberProviderThread(providerThread);
@@ -8965,7 +8983,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* Ref.update(activeTurn, (current) =>
             current?.providerTurnId === input.context.providerTurnId ? null : current,
           );
-          if (input.status === "completed") {
+          if (keepsBackgroundWork) {
             settledTurnByNativeThread.set(input.context.nativeThreadId, input.context);
           } else {
             settledTurnByNativeThread.delete(input.context.nativeThreadId);
@@ -8975,6 +8993,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             next.delete(input.context.providerTurnId);
             return next;
           });
+          yield* Deferred.succeed(input.context.finalized, undefined);
         });
 
         const emitAssistantTextArtifacts = Effect.fnUntraced(function* (input: {
@@ -12403,6 +12422,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               pendingSteers: new Map(),
               steerUuids: new Set(),
               executedModel: undefined,
+              keepsBackgroundAgents: false,
+              finalized: yield* Deferred.make<void>(),
             };
             const attachTurn = Effect.gen(function* () {
               // Set before claiming: a query that exits after the claim finalizes this turn; one that exits before it fails the start.
@@ -12654,6 +12675,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 detail: `Claude provider turn ${turnInput.providerTurnId} is not the active turn.`,
               });
             }
+            // Foreground subagents move to the background first: the interrupt ends the
+            // turn's own tool calls, and perTaskStopAffordance spares background agents.
+            if (
+              turnInput.keepBackgroundAgents === true &&
+              currentTurn !== null &&
+              !(yield* Deferred.isDone(existing.closed))
+            ) {
+              yield* backgroundForegroundSubagents(
+                existing,
+                (yield* Clock.currentTimeMillis) + BACKGROUND_MOVE_TIMEOUT_MS,
+              );
+              currentTurn.keepsBackgroundAgents = yield* liveProcessRunsBackgroundWork(existing);
+            }
+            const keepsProcess = currentTurn?.keepsBackgroundAgents === true;
             yield* Ref.update(interruptedTurns, (current) => {
               const next = new Set(current);
               next.add(turnInput.providerTurnId);
@@ -12669,11 +12704,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ),
                 ),
               );
-              yield* existing.query.close.pipe(Effect.ignore);
+              if (!keepsProcess) yield* existing.query.close.pipe(Effect.ignore);
             }
-            const closed = yield* Deferred.await(existing.closed).pipe(
-              Effect.timeoutOption(CLAUDE_STOP_CONFIRM_TIMEOUT_MS),
-            );
+            const closed = yield* (
+              keepsProcess && currentTurn !== null
+                ? Effect.raceFirst(
+                    Deferred.await(currentTurn.finalized),
+                    Deferred.await(existing.closed),
+                  )
+                : Deferred.await(existing.closed)
+            ).pipe(Effect.timeoutOption(CLAUDE_STOP_CONFIRM_TIMEOUT_MS));
             if (Option.isSome(closed)) {
               return;
             }

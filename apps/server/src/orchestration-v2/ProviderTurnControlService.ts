@@ -59,6 +59,7 @@ export interface ProviderTurnControlServiceV2Shape {
     readonly providerSessionId: ProviderSessionId;
     readonly providerThreadId: ProviderThreadId;
     readonly providerTurnId: ProviderTurnId;
+    readonly keepBackgroundAgents?: boolean;
   }) => Effect.Effect<
     void | ProviderAdapter.ProviderAdapterV2SubagentOutcome,
     ProviderTurnControlError
@@ -260,6 +261,7 @@ export const layer: Layer.Layer<
               providerThread: loaded.providerThread,
               providerTurnId: loaded.providerTurn.id,
               requestRuntimeRestart: true,
+              ...(input.keepBackgroundAgents === true ? { keepBackgroundAgents: true } : {}),
             })
             .pipe(
               Effect.catchTags({

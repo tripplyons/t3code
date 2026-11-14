@@ -1221,6 +1221,8 @@ function failureResetAt(
 
 interface ActiveCodexTurnContext {
   hookStopReason?: string;
+  // A user's Stop ended only this turn; its subagents keep running, as after a failed turn.
+  keepsBackgroundAgents?: boolean;
   capacityRetryAttempt?: number;
   capacityRetryPending?: Deferred.Deferred<ActiveCodexTurnContext | undefined>;
   closedCommandItemIds?: ReadonlySet<string>;
@@ -6280,9 +6282,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const hasActiveDescendants = Array.from((yield* Ref.get(activeTurns)).values()).some(
               (candidate) => isContinuedRunDescendant(candidate, input.context),
             );
-            // Failed roots leave native children working and must settle without them.
-            // Interrupted roots wait for descendants because Stop interrupts the whole lineage.
-            if (event.status === "failed" && hasActiveDescendants) {
+            // Failed roots, and roots a user's Stop spared the children of, leave native
+            // children working and settle without them. Other Stops interrupt the whole lineage.
+            if (
+              (event.status === "failed" ||
+                (event.status === "interrupted" && input.context.keepsBackgroundAgents === true)) &&
+              hasActiveDescendants
+            ) {
               yield* emitRootTerminal(input.context, { ...event, childTurnsContinue: true });
               return;
             }
@@ -7890,9 +7896,19 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   ...goalTurns,
                 ]),
               );
+              // Codex's own turn/interrupt leaves subagent threads running; only T3 stops them.
+              const keepsBackgroundAgents =
+                turnInput.keepBackgroundAgents === true &&
+                activeTurn !== undefined &&
+                activeTurnContexts.includes(activeTurn);
+              if (keepsBackgroundAgents) {
+                for (const root of lineageRoots) root.keepsBackgroundAgents = true;
+              }
               const inLineage = (context: ActiveCodexTurnContext) =>
                 lineageRoots.some(
-                  (root) => context === root || isDescendantCodexTurn(context, root),
+                  (root) =>
+                    context === root ||
+                    (!keepsBackgroundAgents && isDescendantCodexTurn(context, root)),
                 );
               const interruptTargetContexts = [
                 ...(activeTurn === undefined ? [] : [activeTurn]),

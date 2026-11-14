@@ -184,7 +184,10 @@ function streamedThreadId(event: ProviderAdapter.ProviderAdapterV2Event): Thread
 }
 
 function childTurnsContinue(terminal: ProviderTerminalEvent): boolean {
-  return terminal.status === "failed" && terminal.childTurnsContinue === true;
+  return (
+    (terminal.status === "failed" || terminal.status === "interrupted") &&
+    terminal.childTurnsContinue === true
+  );
 }
 
 /** Launching runs still ingest running subagents; taking them over would duplicate events. */

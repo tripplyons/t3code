@@ -1966,11 +1966,21 @@ export const layerWsRpc = (
                   (command.type === "prepared-run.retry"
                     ? threadLaunch.retryPreparation(command)
                     : ThreadMessageIntake.dispatchCommand(
-                        ThreadManagementService.withCreationProvenance(command, {
-                          createdBy: "user",
-                          creationSource:
-                            "creationSource" in command ? command.creationSource : "web",
-                        }),
+                        ThreadManagementService.withCreationProvenance(
+                          // A client's Stop ends the turn; the agents it started run until
+                          // stopped on their own or by Stop on the thread's background work.
+                          command.type === "thread.stop" || command.type === "run.interrupt"
+                            ? {
+                                ...command,
+                                keepBackgroundAgents: command.keepBackgroundAgents ?? true,
+                              }
+                            : command,
+                          {
+                            createdBy: "user",
+                            creationSource:
+                              "creationSource" in command ? command.creationSource : "web",
+                          },
+                        ),
                       )
                   ).pipe(Effect.provide(intakeContext)),
                 )

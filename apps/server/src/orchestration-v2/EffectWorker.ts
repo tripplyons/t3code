@@ -188,6 +188,7 @@ export const layerExecutor: Layer.Layer<
                         requestedAt: DateTime.makeUnsafe(effect.createdAt),
                       },
                     }),
+                ...(request.keepBackgroundAgents === true ? { keepBackgroundAgents: true } : {}),
               })
               .pipe(
                 Effect.tapError((cause) =>
