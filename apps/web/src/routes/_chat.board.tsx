@@ -91,15 +91,14 @@ function ThreadBoard() {
   const rows = sections.flatMap((section) => (openSections.has(section.id) ? section.threads : []));
   const selected = resolveBoardSelection(rows, rowKey, selection);
   const selectedKey = selected ? rowKey(selected) : null;
-  const hasSelection = selectedKey !== null;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Claims DOM focus for the list when the board appears.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Claims DOM focus for the list when the board appears or the selection moves.
   useLayoutEffect(() => {
-    // Leaving a page drops its focus; recovery would land on the hidden composer's region
-    // and draw its keyboard ring. Start the keyboard on the selected row instead.
+    // Leaving a page, or settling the focused row, drops focus; recovery would land on the
+    // hidden composer's region and draw its keyboard ring. Keep the keyboard on the selected row.
     const active = document.activeElement;
     const root = document.querySelector("[data-board-root]");
     if (
-      hasSelection &&
+      selectedKey !== null &&
       (!active ||
         active === document.body ||
         (root?.contains(active) && active.hasAttribute("data-workspace-area")))
@@ -107,7 +106,7 @@ function ThreadBoard() {
       document
         .querySelector<HTMLElement>("[data-board-row][aria-current]")
         ?.focus({ preventScroll: true });
-  }, [hasSelection]);
+  }, [selectedKey]);
   const selectedCapabilities = selected
     ? serverConfigs.get(selected.environmentId)?.environment.capabilities
     : undefined;
@@ -180,7 +179,7 @@ function ThreadBoard() {
       </WorkspacePageHeader>
       <div
         data-board-root
-        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background lg:grid lg:grid-cols-[minmax(18rem,26rem)_1fr]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background lg:grid lg:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]"
       >
         <nav
           aria-label="Board threads"
