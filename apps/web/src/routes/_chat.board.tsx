@@ -18,6 +18,8 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { JumpHintBadge } from "../components/sidebar/SidebarThreadRow";
 import { SidebarInset } from "../components/ui/sidebar";
+import { toastManager } from "../components/ui/toast";
+import { useComposerHandleContext } from "../composerHandleContext";
 import {
   Select,
   SelectItem,
@@ -46,6 +48,7 @@ function latestPreviewText(thread: SidebarThreadSummary) {
 }
 
 function ThreadBoard() {
+  const composerHandle = useComposerHandleContext();
   const threads = useThreadShells();
   const delegatedUnderParent = useDelegatedUnderParent();
   const projects = useProjects();
@@ -114,6 +117,16 @@ function ThreadBoard() {
     if (selectedKey === null) return;
     flushSync(() => setComposerFocusKey(selectedKey));
     document.querySelector<HTMLElement>("[data-board-composer] [contenteditable='true']")?.focus();
+  };
+  const dictate = () => {
+    if (selectedKey === null) return;
+    reply();
+    if (composerHandle?.current?.toggleDictation() === false)
+      toastManager.add({
+        type: "warning",
+        title: "Dictation isn't available for this thread",
+        description: "Check Settings → Voice, or answer what the thread is waiting on first.",
+      });
   };
 
   const select = (thread: SidebarThreadSummary) => {
@@ -283,6 +296,7 @@ function ThreadBoard() {
                   selectedCapabilities?.threadSnooze === true && canSnooze(selected, { now })
                 }
                 onReply={reply}
+                onDictate={dictate}
               />
             ) : null}
             <Button size="sm" variant="outline" onClick={() => move(1)}>

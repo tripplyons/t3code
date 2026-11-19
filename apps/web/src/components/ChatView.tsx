@@ -443,6 +443,8 @@ export default function ChatView(props: ChatViewProps) {
   const board = routeKind === "server" && props.board === true;
   const hideIdleComposer = board && props.hideIdleComposer === true;
   const onSent = board ? props.onSent : undefined;
+  // The board hides an idle composer, but dictation started from the board must stay visible.
+  const [boardDictating, setBoardDictating] = useState(false);
   // Side chats and the board host only the conversation; the page around them owns the rest.
   const chromeless = embedded || board;
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
@@ -3376,6 +3378,7 @@ export default function ChatView(props: ChatViewProps) {
                   promptHistoryEntries={timelineEntries}
                   // The board opens the composer only to reply, so a collapsed pill would be one more tap.
                   forceExpandedOnMobile={board || (forceExpandedMobileComposer && isDraftHeroState)}
+                  onVoiceInputActiveChange={board ? setBoardDictating : undefined}
                   projectSelectionRequired={isLocalDraftThread && activeProject === null}
                   phase={phase}
                   canSteer={!compactionBlocksSteer}
@@ -3564,7 +3567,10 @@ export default function ChatView(props: ChatViewProps) {
   );
 
   const composerHidden =
-    hideIdleComposer && !routeThreadHasUnsentDraft && pendingUserInputs.length === 0;
+    hideIdleComposer &&
+    !boardDictating &&
+    !routeThreadHasUnsentDraft &&
+    pendingUserInputs.length === 0;
   const content = (
     <div
       ref={setWorkspaceLayoutElement}

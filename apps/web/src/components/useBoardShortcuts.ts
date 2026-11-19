@@ -11,6 +11,7 @@ const BOARD_KEYS = new Set([
   "e",
   "l",
   "r",
+  "d",
   "z",
   ..."123456789",
 ]);

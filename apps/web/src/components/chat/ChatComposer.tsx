@@ -310,6 +310,8 @@ export interface ChatComposerHandle {
   isModelPickerOpen: () => boolean;
   isCaretAtStart: () => boolean;
   compactContext: () => void;
+  /** Starts dictation, or stops a recording; false when dictation can't start here. */
+  toggleDictation: () => boolean;
   readSnapshot: () => {
     value: string;
     cursor: number;
@@ -367,6 +369,8 @@ export interface ChatComposerProps {
   activeThreadRuns: ReadonlyArray<OrchestrationV2Run>;
   promptHistoryEntries: ReadonlyArray<TimelineEntry>;
   forceExpandedOnMobile: boolean;
+  /** Reports whether dictation is running, so a host that hides an idle composer keeps it shown. */
+  onVoiceInputActiveChange?: ((active: boolean) => void) | undefined;
   projectSelectionRequired: boolean;
 
   phase: SessionPhase;
@@ -515,6 +519,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadRuns,
     promptHistoryEntries,
     forceExpandedOnMobile,
+    onVoiceInputActiveChange,
     projectSelectionRequired,
     phase,
     canInterrupt,
@@ -1834,6 +1839,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
   });
   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the speech hook lives here, but the host decides whether this composer is shown
+  useEffect(() => {
+    onVoiceInputActiveChange?.(voiceInputActive);
+  }, [voiceInputActive, onVoiceInputActiveChange]);
+  const toggleDictationStable = useStableCallback(() => {
+    const phase = speechInput.state.phase;
+    if (phase === "recording") {
+      void speechInput.stop();
+      return true;
+    }
+    if (phase !== "idle" && phase !== "error") return true;
+    if (!speechInput.available || dictationDisabled) return false;
+    void speechInput.start();
+    return true;
+  });
   // A compact footer gives the dictation capsule the whole row beside the send button.
   const dictationTakesFooter = isComposerFooterCompact && speechInput.state.phase !== "idle";
   const submissionTarget = activePendingProgress ? "pending-user-input" : "provider-turn";
@@ -3052,6 +3072,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.click();
       },
       compactContext: compactThreadContextStable,
+      toggleDictation: toggleDictationStable,
       isModelPickerOpen: () => isComposerModelPickerOpen,
       isCaretAtStart: () => {
         const range = composerEditorRef.current?.readSelectionRange();
@@ -3217,6 +3238,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedProvider,
       selectedProviderModels,
       compactThreadContextStable,
+      toggleDictationStable,
     ],
   );
 

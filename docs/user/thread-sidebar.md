@@ -73,8 +73,10 @@ implement a ready plan there. Sending closes the composer and returns you to the
 list. Press `J` and `K` to move,
 and the number beside a choice to approve, decline, or answer a question. When a
 question allows several choices, the numbers toggle them and `Enter` submits the
-answer. Press `R` to focus the composer and `Esc` to leave it, `E` to settle, `L`
-to snooze, `Z` to undo, and `Enter` to open the thread. A thread waiting on you can't be snoozed.
+answer. Press `R` to focus the composer and `Esc` to leave it, `D` to open the
+composer and start dictating, `E` to settle, `L` to snooze, `Z` to undo, and
+`Enter` to open the thread. While you dictate, press `D` again to stop, or your send
+shortcut to stop and send. A thread waiting on you can't be snoozed.
 Answer it or settle it instead.
 
 ## Pin and reorder threads

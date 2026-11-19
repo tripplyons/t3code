@@ -28,18 +28,21 @@ function reportFailure(result: AtomCommandResult<unknown, unknown>, title: strin
   });
 }
 
-/** Done, Later, Reply, and Open for the selected board thread, with their keys. */
+/** Done, Later, Reply, Dictate, and Open for the selected board thread, with their keys. */
 export function BoardThreadActions({
   thread,
   settlementSupported,
   snoozable,
   onReply,
+  onDictate,
 }: {
   thread: SidebarThreadSummary;
   settlementSupported: boolean;
   /** Whether the environment supports snoozing and the server would accept it now. */
   snoozable: boolean;
   onReply: () => void;
+  /** Opens the reply composer and starts dictation, or stops a recording. */
+  onDictate: () => void;
 }) {
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
@@ -72,6 +75,7 @@ export function BoardThreadActions({
     else if (key === "e" && settlementSupported) void settle();
     else if (key === "l" && snoozable) openSnooze(true);
     else if (key === "r") onReply();
+    else if (key === "d") onDictate();
     else return;
     event.preventDefault();
   });
@@ -113,6 +117,9 @@ export function BoardThreadActions({
       ) : null}
       <Button size="sm" variant="outline" onClick={onReply}>
         Reply <Kbd>R</Kbd>
+      </Button>
+      <Button size="sm" variant="outline" onClick={onDictate}>
+        Dictate <Kbd>D</Kbd>
       </Button>
       <Button
         size="sm"
