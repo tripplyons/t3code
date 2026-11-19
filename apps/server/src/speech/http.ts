@@ -116,6 +116,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
               decoded.value.pcm,
               decoded.value.options,
               args.query.model,
+              args.query.instance,
             )
             .pipe(
               Effect.catchTags({

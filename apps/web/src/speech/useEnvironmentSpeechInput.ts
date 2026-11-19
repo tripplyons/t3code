@@ -122,7 +122,6 @@ export function useVoiceTranscriptionDestination() {
   const canDictate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const cloud = grant?.destination.kind === "cloud" ? grant.destination : undefined;
   const provider = cloud?.provider;
-  const model = cloud?.provider === "openrouter" ? cloud.model : undefined;
   const supported =
     environment?.serverConfig?.environment.capabilities[
       provider ? "cloudVoiceTranscription" : "voiceTranscription"
@@ -130,8 +129,7 @@ export function useVoiceTranscriptionDestination() {
   return {
     ...(hydrated && choice === null ? { offerFirstRunSetup: true } : {}),
     environmentId,
-    ...(provider ? { cloudProvider: provider } : {}),
-    ...(model ? { cloudModel: model } : {}),
+    ...(cloud ? { cloud, cloudProvider: cloud.provider } : {}),
     grantId: grant?.id ?? null,
     label:
       provider && environment
@@ -146,8 +144,8 @@ export function useEnvironmentSpeechInput(input: HookInput) {
   const destination = useVoiceTranscriptionDestination();
   const prepared = destination.prepared;
   const grantId = destination.grantId;
+  const cloud = destination.cloud;
   const cloudProvider = destination.cloudProvider;
-  const cloudModel = destination.cloudModel;
   const draftCapabilities = useEnvironment(input.environmentId)?.serverConfig?.environment
     .capabilities;
   const originatingConnection = Option.getOrNull(usePreparedConnection(input.environmentId));
@@ -232,8 +230,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
     };
     const platform = createBrowserVoiceInputPlatform({
       prepared,
-      cloudProvider,
-      cloudModel,
+      cloud,
       hasAudioConsent,
       getTranscriptionOptions: (): SpeechTranscriptionOptions => {
         const {
@@ -347,7 +344,8 @@ export function useEnvironmentSpeechInput(input: HookInput) {
       controller.dispose();
       if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [prepared, grantId, cloudProvider, cloudModel]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- The cloud destination is decoded anew each render; every new choice gets a new grant id, which stands in for it.
+  }, [prepared, grantId]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- probes the chosen environment's speech status once its connection is available
   useEffect(() => {

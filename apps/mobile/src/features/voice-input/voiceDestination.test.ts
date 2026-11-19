@@ -1,4 +1,4 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -212,7 +212,7 @@ it("keeps local as the default and never reuses consent for an offline or resele
     // OpenRouter without a model is no destination; with one, the exact id travels with the audio.
     chooseVoiceDestination(host, "openrouter");
     expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
-    chooseVoiceDestination(host, "openrouter", "acme/transcribe-1");
+    chooseVoiceDestination(host, "openrouter", { model: "acme/transcribe-1" });
     mocks.fetch
       .mockResolvedValueOnce(Response.json({ openai: true, xai: true, openrouter: true }))
       .mockResolvedValueOnce(Response.json({ text: "routed" }));
@@ -221,6 +221,22 @@ it("keeps local as the default and never reuses consent for an offline or resele
     const upload = new URL(String(mocks.fetch.mock.lastCall![0]));
     expect(upload.pathname).toBe("/api/voice/cloud/openrouter/transcribe");
     expect(upload.searchParams.get("model")).toBe("acme/transcribe-1");
+    // Codex needs a signed-in instance, and the upload names it.
+    chooseVoiceDestination(host, "codex");
+    expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
+    chooseVoiceDestination(host, "codex", { instanceId: ProviderInstanceId.make("personal") });
+    mocks.fetch.mockResolvedValueOnce(Response.json({ openai: true, xai: true, codex: ["work"] }));
+    await expect(
+      appAtomRegistry.get(voiceRouteAtom)!.transcriber!.prepare(options),
+    ).rejects.toMatchObject({ code: "unavailable", message: expect.stringContaining("ChatGPT") });
+    mocks.fetch
+      .mockResolvedValueOnce(Response.json({ openai: true, xai: true, codex: ["personal"] }))
+      .mockResolvedValueOnce(Response.json({ text: "dictated" }));
+    const dictated = await appAtomRegistry.get(voiceRouteAtom)!.transcriber!.prepare(options);
+    await expect(dictated.transcribe("file:///voice.m4a", options)).resolves.toBe("dictated");
+    const codexUpload = new URL(String(mocks.fetch.mock.lastCall![0]));
+    expect(codexUpload.pathname).toBe("/api/voice/cloud/codex/transcribe");
+    expect(codexUpload.searchParams.get("instance")).toBe("personal");
     const failWrite = () => {
       throw new Error("Device storage is unavailable");
     };

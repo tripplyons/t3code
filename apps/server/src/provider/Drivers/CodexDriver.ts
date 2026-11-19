@@ -29,6 +29,7 @@ import {
   checkCodexProviderStatus,
   makePendingCodexProvider,
   probeCodexSkillsForCwd,
+  readCodexChatGptAccessToken,
   withCodexAppServerClient,
 } from "../CodexProvider.ts";
 import { resolveCodexLaunchArgs } from "../codexLaunchArgs.ts";
@@ -401,6 +402,27 @@ export const CodexDriver: ProviderDriver<
           ),
         );
 
+    const chatGptAccessToken = readCodexChatGptAccessToken({
+      binaryPath: effectiveConfig.binaryPath,
+      homePath: effectiveConfig.homePath,
+      launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
+      cwd: process.cwd(),
+      environment: processEnv,
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("20 seconds"),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Codex could not read its ChatGPT sign-in.",
+            cause,
+          }),
+      ),
+    );
+
     // `codex login` and `codex logout` rewrite auth.json outside T3.
     if (effectiveConfig.enabled) {
       yield* fileSystem.watch(accountKey).pipe(
@@ -424,6 +446,7 @@ export const CodexDriver: ProviderDriver<
       consumeResetCredit,
       orchestrationAdapter,
       textGeneration,
+      chatGptAccessToken,
     } satisfies ProviderInstance;
   }),
 };

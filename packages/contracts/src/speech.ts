@@ -2,29 +2,40 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const CloudSpeechApiKey = TrimmedNonEmptyString.check(
   Schema.isMaxLength(4096),
   Schema.isPattern(/^(?![a-z][a-z\d+.-]*:\/\/)[!-~]+$/i),
 );
 
-export const CloudSpeechProvider = Schema.Literals(["openai", "xai", "openrouter"]);
+/** Providers that authorize with an API key saved on the environment. */
+export const CloudSpeechKeyProvider = Schema.Literals(["openai", "xai", "openrouter"]);
+export type CloudSpeechKeyProvider = typeof CloudSpeechKeyProvider.Type;
+/** `codex` authorizes with a Codex instance's ChatGPT sign-in instead of a key. */
+export const CloudSpeechProvider = Schema.Literals([...CloudSpeechKeyProvider.literals, "codex"]);
 export type CloudSpeechProvider = typeof CloudSpeechProvider.Type;
 export const CLOUD_SPEECH_LABELS = {
   openai: "OpenAI",
   xai: "Grok Voice Transcribe",
   openrouter: "OpenRouter",
+  codex: "Codex",
 } as const;
 export const CLOUD_SPEECH_PROVIDER_NAMES = {
   openai: "OpenAI",
   xai: "xAI",
   openrouter: "OpenRouter",
+  codex: "ChatGPT",
 } as const;
-/** Servers that predate OpenRouter report only the first two providers. */
+/**
+ * Servers that predate OpenRouter report only the first two providers, and servers that predate
+ * Codex dictation omit `codex`. `codex` lists the Codex instances signed in with ChatGPT.
+ */
 export const CloudSpeechKeys = Schema.Struct({
   openai: Schema.Boolean,
   xai: Schema.Boolean,
   openrouter: Schema.optionalKey(Schema.Boolean),
+  codex: Schema.optionalKey(Schema.Array(ProviderInstanceId)),
 });
 export type CloudSpeechKeys = typeof CloudSpeechKeys.Type;
 
@@ -58,6 +69,21 @@ export class CloudSpeechError extends Schema.TaggedError<CloudSpeechError>()(
 ) {
   override get message() {
     const name = CLOUD_SPEECH_PROVIDER_NAMES[this.provider];
+    if (this.provider === "codex")
+      switch (this.reason) {
+        case "missing-key":
+        case "key-changed":
+        case "unreadable-key":
+          return "Sign in to Codex with ChatGPT on the selected environment, then choose Codex in Settings → Voice.";
+        case "rejected-key":
+          return "ChatGPT rejected the Codex sign-in. Sign in to Codex again on the selected environment.";
+        case "rate-limit":
+          return "ChatGPT reached a dictation limit. Try again later.";
+        case "model-unavailable":
+          return "The chosen Codex instance can’t transcribe. Choose another in Settings → Voice.";
+        case "unavailable":
+          return "ChatGPT couldn’t transcribe this recording. Try again later.";
+      }
     switch (this.reason) {
       case "missing-key":
         return `Add your ${name} API key in Settings → Voice.`;

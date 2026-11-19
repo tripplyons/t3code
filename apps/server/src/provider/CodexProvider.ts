@@ -55,6 +55,7 @@ import {
 } from "./codexUsageLimits.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import packageJson from "../../package.json" with { type: "json" };
+import { chatGptTokenClaims } from "./chatGptToken.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 const RATE_LIMITS_PROBE_TIMEOUT_MS = 3_000;
 
@@ -661,6 +662,32 @@ export const withCodexAppServerClient = Effect.fn("withCodexAppServerClient")(fu
   const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
   return { client, initialize };
+});
+
+const CHATGPT_TOKEN_REFRESH_MARGIN_MS = 60_000;
+
+/** The ChatGPT access token of Codex's own sign-in, or undefined for API-key or no sign-in. */
+export const readCodexChatGptAccessToken = Effect.fn("readCodexChatGptAccessToken")(function* (
+  input: Parameters<typeof withCodexAppServerClient>[0],
+) {
+  const { client } = yield* withCodexAppServerClient(input);
+  const read = (refreshToken: boolean) =>
+    client
+      .request("getAuthStatus", { includeToken: true, refreshToken })
+      .pipe(
+        Effect.map((status) =>
+          status.authMethod === "chatgpt" && status.authToken ? status.authToken : undefined,
+        ),
+      );
+  const token = yield* read(false);
+  if (token === undefined) return undefined;
+  // Codex refreshes its saved login only while it runs, so a long-idle login can hand over an
+  // expired token. Ask for a refresh only then; refreshing every read costs a network trip.
+  const { expiresAtMs } = chatGptTokenClaims(token);
+  const now = DateTime.toEpochMillis(yield* DateTime.now);
+  if (expiresAtMs !== undefined && expiresAtMs > now + CHATGPT_TOKEN_REFRESH_MARGIN_MS)
+    return token;
+  return yield* read(true);
 });
 
 // Usage is an enrichment: a failure or a slow answer degrades to "no usage this

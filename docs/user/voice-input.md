@@ -47,6 +47,13 @@ Vocabulary hints are not sent to OpenRouter; dictionary spellings are applied
 after transcription. If OpenRouter stops listing your model, dictation stops
 until you choose another.
 
+**Codex** uses the ChatGPT dictation that comes with a Codex subscription, so it
+needs no API key. Sign in to Codex with ChatGPT on the environment first. If the
+environment has more than one ChatGPT sign-in, choose which one pays for dictation;
+that choice applies only to this device. Codex sign-ins that T3 Code manages with
+its own OpenAI login can't dictate. ChatGPT keeps each recording for 30 days.
+Vocabulary hints are not sent; dictionary spellings are applied after transcription.
+
 ## Set up a model
 
 In **Settings → Voice → Transcription**, download a model and choose **Use model** if it

@@ -4,8 +4,8 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import { CloudSpeechError, SPEECH_STREAM_PATH } from "@t3tools/contracts";
 import type {
-  CloudSpeechModelId,
-  CloudSpeechProvider,
+  CloudSpeechKeyProvider,
+  CloudVoiceTranscriptionDestination,
   SettingsSecretValue,
   SpeechAcceleration,
   SpeechModelUnloadTimeout,
@@ -91,16 +91,17 @@ export const getCloudSpeechModels = (prepared: PreparedConnection) =>
 
 export const requireCloudSpeechKey = (
   prepared: PreparedConnection,
-  provider: CloudSpeechProvider,
+  cloud: CloudVoiceTranscriptionDestination,
 ) =>
   getCloudSpeechKeys(prepared).pipe(
     Effect.flatMap((keys) =>
-      keys[provider]
+      (cloud.provider === "codex" ? keys.codex?.includes(cloud.instanceId) : keys[cloud.provider])
         ? Effect.void
         : Effect.fail(
             new VoiceTranscriptionError({
               code: "unavailable",
-              message: new CloudSpeechError({ provider, reason: "missing-key" }).message,
+              message: new CloudSpeechError({ provider: cloud.provider, reason: "missing-key" })
+                .message,
             }),
           ),
     ),
@@ -108,7 +109,7 @@ export const requireCloudSpeechKey = (
 
 export const setCloudSpeechKey = (
   prepared: PreparedConnection,
-  provider: CloudSpeechProvider,
+  provider: CloudSpeechKeyProvider,
   key: SettingsSecretValue | null,
 ) =>
   request({
@@ -126,13 +127,18 @@ export const setCloudSpeechKey = (
 
 export const transcribeCloudPcm = (
   prepared: PreparedConnection,
-  provider: CloudSpeechProvider,
+  cloud: CloudVoiceTranscriptionDestination,
   pcm: Uint8Array,
   options: SpeechTranscriptionOptions,
   canSend: () => boolean,
-  model?: CloudSpeechModelId,
 ) => {
-  const query = model === undefined ? {} : { model };
+  const { provider } = cloud;
+  const query =
+    cloud.provider === "openrouter"
+      ? { model: cloud.model }
+      : cloud.provider === "codex"
+        ? { instance: cloud.instanceId }
+        : {};
   return request({
     group: "voice",
     prepared,

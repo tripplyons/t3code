@@ -10,11 +10,14 @@ import {
   CLOUD_SPEECH_LABELS,
   CLOUD_SPEECH_PROVIDER_NAMES,
   CloudSpeechProvider,
+  type CloudSpeechKeyProvider,
   CloudSpeechApiKey,
   CloudSpeechModelId,
   isSecretReference,
   type CloudSpeechModel,
+  type ProviderInstanceId,
   type SecretProviderId,
+  type ServerConfig,
   type SettingsSecretValue,
   type VoiceTranscriptionDestination,
 } from "@t3tools/contracts";
@@ -31,6 +34,7 @@ import { ListActionRow } from "../../components/ui/ListActionRow";
 import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
 import { Chip } from "../../components/ui/Chip";
 import { ListSection } from "../../components/ui/ListSection";
+import { useEnvironmentServerConfig } from "../../state/entities";
 import type { EnvironmentPresentation } from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import {
@@ -48,6 +52,22 @@ const isApiKey = Schema.is(CloudSpeechApiKey);
 const isModelId = Schema.is(CloudSpeechModelId);
 const MODEL_ROWS = 6;
 
+type Providers = ServerConfig["providers"] | undefined;
+
+function codexSignIn(providers: Providers, instanceId: ProviderInstanceId) {
+  const provider = providers?.find((entry) => entry.instanceId === instanceId);
+  return {
+    name: provider?.displayName ?? (instanceId === "codex" ? "Codex" : instanceId),
+    email: provider?.auth.email,
+  };
+}
+
+function activeDetail(providers: Providers, active: CloudDestination) {
+  if (active.provider === "openrouter") return ` · ${active.model}`;
+  if (active.provider === "codex") return ` · ${codexSignIn(providers, active.instanceId).name}`;
+  return "";
+}
+
 /** The cloud method row for one environment; opens the provider sheet. */
 export function CloudVoiceChoice({
   environment,
@@ -56,15 +76,16 @@ export function CloudVoiceChoice({
   onOpenChange,
 }: Props & { open: boolean; onOpenChange: (open: boolean) => void }) {
   const usable = useAtomValue(cloudVoiceConnectionAtom(environment.environmentId)) !== null;
+  const providers = useEnvironmentServerConfig(environment.environmentId)?.providers;
   return (
     <>
       <ListChoiceRow
         label="Cloud provider"
         description={
           active
-            ? `${CLOUD_SPEECH_LABELS[active.provider]}${active.provider === "openrouter" ? ` · ${active.model}` : ""}`
+            ? `${CLOUD_SPEECH_LABELS[active.provider]}${activeDetail(providers, active)}`
             : usable
-              ? "Use your own API key"
+              ? "Use an API key or your Codex sign-in"
               : "Not connected"
         }
         selected={active !== null}
@@ -174,6 +195,7 @@ function Separated({ children }: { children: ReactNode }) {
 function CloudChoices({ environment, active, onClose }: Props & { onClose: () => void }) {
   const id = environment.environmentId;
   const connection = useAtomValue(cloudVoiceConnectionAtom(id));
+  const providers = useEnvironmentServerConfig(id)?.providers;
   const keys = useAtomValue(cloudVoiceKeysAtom(id));
   const reload = useAtomRefresh(cloudVoiceKeysAtom(id));
   const canManage = useEnvironmentScope(id, AuthSettingsWriteScope);
@@ -212,7 +234,10 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     }
   };
   const edit = (provider: CloudSpeechProvider, enable: boolean) => {
-    const stored = environment.serverConfig?.settings.cloudSpeechCredentials?.[provider];
+    const stored =
+      provider === "codex"
+        ? undefined
+        : environment.serverConfig?.settings.cloudSpeechCredentials?.[provider];
     const ref =
       isSecretReference(stored) && sources.some((candidate) => candidate.id === stored.provider)
         ? stored
@@ -228,14 +253,14 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     setEditing(null);
   };
   const changeKey = async (
-    provider: CloudSpeechProvider,
+    provider: CloudSpeechKeyProvider,
     value: SettingsSecretValue | null,
     chosen?: CloudSpeechModelId,
   ) => {
     if (!connection || !canManage || saving) return;
     const commit =
       value !== null && (editing?.enable || (chosen !== undefined && chosen !== activeModel))
-        ? pendingCloudVoiceChoice(id, provider, chosen)
+        ? pendingCloudVoiceChoice(id, provider, chosen === undefined ? {} : { model: chosen })
         : null;
     setSaving(true);
     try {
@@ -274,9 +299,46 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     const saved = keys.value;
     if (!editing)
       return (
-        <ListSection footer={`Audio is sent through ${environment.label} using its API key.`}>
+        <ListSection
+          footer={`Audio is sent through ${environment.label} using its API key or Codex sign-in.`}
+        >
           {CloudSpeechProvider.literals.map((provider, index) => {
             const label = CLOUD_SPEECH_LABELS[provider];
+            if (provider === "codex") {
+              const signedIn = saved.codex;
+              const isActive = active?.provider === "codex";
+              const only = signedIn?.length === 1 ? signedIn[0] : undefined;
+              return (
+                <ListChoiceRow
+                  key={provider}
+                  label={label}
+                  leading={<ProviderIcon provider="codex" size={20} />}
+                  selected={isActive}
+                  separated={index > 0}
+                  disabled={!signedIn?.length || saving}
+                  description={
+                    signedIn === undefined
+                      ? "Update the environment to use this provider"
+                      : signedIn.length === 0
+                        ? "Sign in to Codex with ChatGPT on this environment"
+                        : isActive && signedIn.length > 1
+                          ? "Tap to change Codex sign-in"
+                          : "Uses your ChatGPT plan"
+                  }
+                  onPress={() => {
+                    if (!only) return edit(provider, true);
+                    if (isActive) return;
+                    Dialog.confirm({
+                      title: `Use ${label} for dictation?`,
+                      message: `${cloudSpeechDisclosure(provider, environment.label)} Select This device to stop sharing.`,
+                      confirmText: `Use ${label}`,
+                      onConfirm: () =>
+                        enable(pendingCloudVoiceChoice(id, provider, { instanceId: only })),
+                    });
+                  }}
+                />
+              );
+            }
             const routed = provider === "openrouter";
             const key = saved[provider];
             const isActive = active?.provider === provider;
@@ -330,6 +392,38 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
         </ListSection>
       );
 
+    if (editing.provider === "codex") {
+      const activeInstance = active?.provider === "codex" ? active.instanceId : undefined;
+      return (
+        <>
+          <Text className="px-2 text-sm text-foreground-muted">
+            {cloudSpeechDisclosure("codex", environment.label)}
+          </Text>
+          <ListSection title="Codex sign-in" footer="This choice applies only to this device.">
+            {(saved.codex ?? []).map((instanceId, index) => {
+              const { name, email } = codexSignIn(providers, instanceId);
+              return (
+                <ListChoiceRow
+                  key={instanceId}
+                  label={name}
+                  {...(email ? { description: email } : {})}
+                  selected={instanceId === activeInstance}
+                  separated={index > 0}
+                  onPress={() => {
+                    if (instanceId !== activeInstance)
+                      enable(() => chooseVoiceDestination(id, "codex", { instanceId }));
+                    onClose();
+                  }}
+                />
+              );
+            })}
+          </ListSection>
+          <ListSection>
+            <ListActionRow label="Back to providers" onPress={reset} />
+          </ListSection>
+        </>
+      );
+    }
     const provider = editing.provider;
     const label = CLOUD_SPEECH_LABELS[provider];
     const company = CLOUD_SPEECH_PROVIDER_NAMES[provider];
@@ -358,7 +452,7 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
       if (credential !== undefined && keyChanged)
         return void changeKey(provider, credential, model);
       // Model-only changes never write to the environment.
-      if (grantChanges) enable(() => chooseVoiceDestination(id, provider, model));
+      if (grantChanges) enable(() => chooseVoiceDestination(id, provider, { model }));
       onClose();
     };
     const submit = () => {

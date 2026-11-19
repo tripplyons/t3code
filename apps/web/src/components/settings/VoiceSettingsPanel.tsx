@@ -122,6 +122,7 @@ import { toastManager } from "../ui/toast";
 import { MicrophoneOrderList } from "./MicrophoneOrderList";
 import { MicrophoneTest } from "./MicrophoneTest";
 import { CloudVoiceConfiguration } from "./CloudVoiceConfiguration";
+import { CodexVoiceConfiguration } from "./CodexVoiceConfiguration";
 import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
@@ -144,7 +145,7 @@ function CloudSpeechLogo({ provider }: { provider: CloudSpeechProvider }) {
     return <ProviderPackageIcon icon={openRouterIcon} aria-hidden className="size-4 shrink-0" />;
   return (
     <ProviderInstanceIcon
-      driverKind={ProviderDriverKind.make(provider === "openai" ? "codex" : "grok")}
+      driverKind={ProviderDriverKind.make(provider === "xai" ? "grok" : "codex")}
       displayName={CLOUD_SPEECH_LABELS[provider]}
       iconClassName="size-4"
     />
@@ -1257,9 +1258,13 @@ export function VoiceSettingsPanel() {
   const cloudEnvironment = environments.find(
     (env) => env.environmentId === pendingCloud?.environmentId,
   );
-  // OpenRouter users without settings access still manage their own model choice.
+  // OpenRouter and Codex users without settings access still manage their own per-device choice.
   const manageLabel =
-    destination.cloudProvider === "openrouter" ? "Manage OpenRouter" : "Manage key";
+    destination.cloudProvider === "openrouter"
+      ? "Manage OpenRouter"
+      : destination.cloudProvider === "codex"
+        ? "Manage Codex"
+        : "Manage key";
   const chosenEnvironment = environments.find(
     (environment) => environment.environmentId === destination.environmentId,
   );
@@ -1463,7 +1468,9 @@ export function VoiceSettingsPanel() {
               </Select>
               {destination.cloudProvider &&
                 chosenEnvironment &&
-                (canManageKey || destination.cloudProvider === "openrouter") && (
+                (canManageKey ||
+                  destination.cloudProvider === "openrouter" ||
+                  destination.cloudProvider === "codex") && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
@@ -1490,18 +1497,30 @@ export function VoiceSettingsPanel() {
             </div>
           }
         />
-        {pendingCloud && cloudEnvironment && (
-          <CloudVoiceConfiguration
-            key={JSON.stringify(pendingCloud)}
-            provider={pendingCloud.provider}
-            environment={cloudEnvironment}
-            active={
-              destination.environmentId === pendingCloud.environmentId &&
-              destination.cloudProvider === pendingCloud.provider
-            }
-            close={() => setPendingCloud(null)}
-          />
-        )}
+        {pendingCloud &&
+          cloudEnvironment &&
+          (pendingCloud.provider === "codex" ? (
+            <CodexVoiceConfiguration
+              key={JSON.stringify(pendingCloud)}
+              environment={cloudEnvironment}
+              active={
+                destination.environmentId === pendingCloud.environmentId &&
+                destination.cloudProvider === "codex"
+              }
+              close={() => setPendingCloud(null)}
+            />
+          ) : (
+            <CloudVoiceConfiguration
+              key={JSON.stringify(pendingCloud)}
+              provider={pendingCloud.provider}
+              environment={cloudEnvironment}
+              active={
+                destination.environmentId === pendingCloud.environmentId &&
+                destination.cloudProvider === pendingCloud.provider
+              }
+              close={() => setPendingCloud(null)}
+            />
+          ))}
         {(model || destination.cloudProvider) && (
           <SettingsRow
             {...searchableSetting("speech-language")}
@@ -1541,12 +1560,16 @@ export function VoiceSettingsPanel() {
           description={
             destination.cloudProvider === "openai"
               ? "OpenAI handles silence itself."
-              : "Skip silence and background noise before transcribing."
+              : destination.cloudProvider === "codex"
+                ? "Codex dictation sends the whole recording to ChatGPT."
+                : "Skip silence and background noise before transcribing."
           }
           control={
             <Switch
               aria-label="Silence filtering"
-              disabled={destination.cloudProvider === "openai"}
+              disabled={
+                destination.cloudProvider === "openai" || destination.cloudProvider === "codex"
+              }
               checked={settings.speechSilenceFiltering}
               onCheckedChange={(checked) =>
                 void updateClientSettings({ speechSilenceFiltering: checked })

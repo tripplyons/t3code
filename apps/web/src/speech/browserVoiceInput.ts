@@ -12,7 +12,7 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 import type { PreparedConnection } from "@t3tools/client-runtime/connection";
 import type { SpeechTranscriptionOptions, SpeechStreamText } from "@t3tools/contracts";
-import type { CloudSpeechModelId, CloudSpeechProvider } from "@t3tools/contracts";
+import type { CloudVoiceTranscriptionDestination } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 import { createBrowserPcmCapture } from "./browserPcmCapture";
@@ -22,9 +22,7 @@ const isVoiceTranscriptionError = Schema.is(VoiceTranscriptionError);
 
 export function createBrowserVoiceInputPlatform(input: {
   readonly prepared: PreparedConnection;
-  readonly cloudProvider?: CloudSpeechProvider | undefined;
-  /** The exact OpenRouter model the grant names; required with that provider. */
-  readonly cloudModel?: CloudSpeechModelId | undefined;
+  readonly cloud?: CloudVoiceTranscriptionDestination | undefined;
   readonly hasAudioConsent: () => boolean;
   readonly getTranscriptionOptions: () => SpeechTranscriptionOptions;
   readonly getMicrophoneId: () => string | Promise<string>;
@@ -43,14 +41,13 @@ export function createBrowserVoiceInputPlatform(input: {
         const response = await fetch(uri, { signal: transcriptionSignal });
         const pcm = new Uint8Array(await response.arrayBuffer());
         const result = await runEnvironmentSpeech(
-          input.cloudProvider
+          input.cloud
             ? transcribeCloudPcm(
                 input.prepared,
-                input.cloudProvider,
+                input.cloud,
                 pcm,
                 recordingOptions,
                 input.hasAudioConsent,
-                input.cloudModel,
               )
             : transcribeEnvironmentPcm(
                 input.prepared,
@@ -72,16 +69,8 @@ export function createBrowserVoiceInputPlatform(input: {
         });
       }
     };
-    if (input.cloudProvider) {
-      if (input.cloudProvider === "openrouter" && !input.cloudModel)
-        throw new VoiceTranscriptionError({
-          code: "unavailable",
-          message: "Choose an OpenRouter model in Settings → Voice.",
-        });
-      await runEnvironmentSpeech(
-        requireCloudSpeechKey(input.prepared, input.cloudProvider),
-        options,
-      );
+    if (input.cloud) {
+      await runEnvironmentSpeech(requireCloudSpeechKey(input.prepared, input.cloud), options);
       throwIfVoiceTranscriptionAborted(options.signal);
       return {
         locale: effectiveSpeechLanguage(cloudSpeechLanguages, recordingOptions.speechLanguage),

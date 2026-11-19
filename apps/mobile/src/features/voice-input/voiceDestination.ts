@@ -2,8 +2,10 @@ import {
   AuthOrchestrationOperateScope,
   type CloudSpeechModelId,
   type CloudSpeechProvider,
+  type CloudVoiceTranscriptionDestination,
   type EnvironmentId,
   DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
+  type ProviderInstanceId,
   type VoiceTranscriptionDestination,
 } from "@t3tools/contracts";
 import {
@@ -43,22 +45,29 @@ export const voiceGrantAtom = Atom.make((get) => {
 
 let choiceRevision = 0;
 
-type CloudDestination = Extract<VoiceTranscriptionDestination, { kind: "cloud" }>;
-/** OpenRouter has no default model, so a cloud choice without one is no choice at all. */
+/** OpenRouter needs a model and Codex needs an instance; OpenAI and xAI ignore both. */
+export type CloudVoiceSelection = {
+  readonly model?: CloudSpeechModelId;
+  readonly instanceId?: ProviderInstanceId;
+};
+
+/** A cloud choice without the model or instance its provider needs is no choice at all. */
 function cloudVoiceDestination(
   environmentId: EnvironmentId,
   provider: CloudSpeechProvider,
-  model?: CloudSpeechModelId,
-): CloudDestination | null {
+  { model, instanceId }: CloudVoiceSelection = {},
+): CloudVoiceTranscriptionDestination | null {
   if (provider === "openrouter")
     return model ? { kind: "cloud", environmentId, provider, model } : null;
+  if (provider === "codex")
+    return instanceId ? { kind: "cloud", environmentId, provider, instanceId } : null;
   return { kind: "cloud", environmentId, provider };
 }
 
 export function chooseVoiceDestination(
   environmentId: EnvironmentId | null,
   provider?: CloudSpeechProvider,
-  model?: CloudSpeechModelId,
+  selection?: CloudVoiceSelection,
 ) {
   choiceRevision++;
   // A failed change must not leave the old destination armed in this session.
@@ -67,7 +76,7 @@ export function chooseVoiceDestination(
     environmentId === null
       ? null
       : provider
-        ? cloudVoiceDestination(environmentId, provider, model)
+        ? cloudVoiceDestination(environmentId, provider, selection)
         : { kind: "environment", environmentId };
   const grant: VoiceGrant | null = destination && { id: uuidv4(), destination };
   writeVoiceGrant(grant);
@@ -77,11 +86,11 @@ export function chooseVoiceDestination(
 export function pendingCloudVoiceChoice(
   id: EnvironmentId,
   provider: CloudSpeechProvider,
-  model?: CloudSpeechModelId,
+  selection?: CloudVoiceSelection,
 ) {
   const revision = ++choiceRevision;
   return () => {
-    if (revision === choiceRevision) chooseVoiceDestination(id, provider, model);
+    if (revision === choiceRevision) chooseVoiceDestination(id, provider, selection);
   };
 }
 
@@ -138,15 +147,13 @@ export function runSpeech<A, E>(
 function environmentTranscriber(
   prepared: PreparedConnection,
   canSend: () => boolean,
-  cloud?: CloudDestination,
+  cloud?: CloudVoiceTranscriptionDestination,
 ) {
-  const provider = cloud?.provider;
-  const model = cloud?.provider === "openrouter" ? cloud.model : undefined;
   return createEnvironmentTranscriber({
     canSend,
     prepare: async (signal) => {
-      if (provider) {
-        await runSpeech(requireCloudSpeechKey(prepared, provider), signal, canSend);
+      if (cloud) {
+        await runSpeech(requireCloudSpeechKey(prepared, cloud), signal, canSend);
         return "auto";
       }
       const status = await runSpeech(getEnvironmentSpeechStatus(prepared), signal, canSend);
@@ -179,14 +186,13 @@ function environmentTranscriber(
     upload: async (pcm, signal) =>
       (
         await runSpeech(
-          provider
+          cloud
             ? transcribeCloudPcm(
                 prepared,
-                provider,
+                cloud,
                 pcm,
                 DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
                 canSend,
-                model,
               )
             : transcribeEnvironmentPcm(
                 prepared,

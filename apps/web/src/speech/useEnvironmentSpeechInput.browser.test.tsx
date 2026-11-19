@@ -186,8 +186,8 @@ vi.mock("./browserVoiceInput", () => ({
             locale: "en",
             transcribe: async () => {
               mocks.transcribeCalls.push(
-                input.cloudProvider
-                  ? `${[input.cloudProvider, (input as { cloudModel?: string }).cloudModel].filter(Boolean).join(":")} via ${environmentId}`
+                input.cloud
+                  ? `${[input.cloud.provider, input.cloud.provider === "openrouter" ? input.cloud.model : undefined].filter(Boolean).join(":")} via ${environmentId}`
                   : environmentId,
               );
               const next = mocks.transcripts.shift() ?? "dictated";

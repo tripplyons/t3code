@@ -378,7 +378,8 @@ export type VoiceMicrophoneEntry = typeof VoiceMicrophoneEntry.Type;
 
 /**
  * Where this device sends microphone audio. A cloud grant names the forwarding environment and
- * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
+ * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default,
+ * and a Codex grant names the Codex instance whose ChatGPT sign-in pays for it.
  */
 export const VoiceTranscriptionDestination = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("environment"), environmentId: EnvironmentId }),
@@ -393,8 +394,18 @@ export const VoiceTranscriptionDestination = Schema.Union([
     provider: Schema.Literal("openrouter"),
     model: CloudSpeechModelId,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literal("codex"),
+    instanceId: ProviderInstanceId,
+  }),
 ]);
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
+export type CloudVoiceTranscriptionDestination = Extract<
+  VoiceTranscriptionDestination,
+  { kind: "cloud" }
+>;
 
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(

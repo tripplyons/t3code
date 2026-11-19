@@ -1,5 +1,12 @@
 import { it } from "@effect/vitest";
-import { DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS, SecretProviderId } from "@t3tools/contracts";
+import {
+  DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  SecretProviderId,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -7,8 +14,15 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as CloudSpeech from "./CloudSpeech.ts";
+
+const registry = (instances: ReadonlyArray<ProviderInstance> = []) =>
+  Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+    getInstance: (id) => Effect.succeed(instances.find((instance) => instance.instanceId === id)),
+    listInstances: Effect.succeed(instances),
+  });
 
 it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved key", (provider) =>
   Effect.gen(function* () {
@@ -25,6 +39,7 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
         CloudSpeech.layer.pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+          Layer.provide(registry()),
           Layer.provide(
             Layer.mock(SecretResolver.SecretResolver)({
               read,
@@ -49,7 +64,12 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
     yield* service.setKey(provider === "openai" ? "xai" : "openai", Redacted.make("other"));
     expect((yield* Effect.flip(transcribe()))._tag).toBe("CloudSpeechError");
     yield* service.setKey(provider, Redacted.make("chosen"));
-    expect(yield* service.configured).toEqual({ openai: true, xai: true, openrouter: false });
+    expect(yield* service.configured).toEqual({
+      openai: true,
+      xai: true,
+      openrouter: false,
+      codex: [],
+    });
     yield* Effect.flip(transcribe(new Uint8Array(3)));
     expect(upstream).not.toHaveBeenCalled();
     expect(yield* transcribe()).toBe("hello");
@@ -108,6 +128,7 @@ it.effect("uploads to OpenRouter only for a listed exact model, as zero-retentio
         CloudSpeech.layer.pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+          Layer.provide(registry()),
           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
         ),
       ),
@@ -166,6 +187,7 @@ it.effect("removing a key while a catalog read is pending prevents the upload", 
         CloudSpeech.layer.pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+          Layer.provide(registry()),
           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
         ),
       ),
@@ -196,5 +218,86 @@ it.effect("removing a key while a catalog read is pending prevents the upload", 
     const exit = yield* Fiber.await(job);
     expect(uploads).toEqual([]);
     expect(exit._tag).toBe("Failure");
+  }),
+);
+
+it.effect("dictates through the chosen Codex instance's ChatGPT sign-in, read at upload time", () =>
+  Effect.gen(function* () {
+    const claims = { "https://api.openai.com/auth": { chatgpt_account_id: "workspace-1" } };
+    let token: string | undefined =
+      `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
+    const codex = (
+      id: string,
+      auth: Partial<ServerProvider["auth"]>,
+      chatGptAccessToken?: ProviderInstance["chatGptAccessToken"],
+    ): ProviderInstance => ({
+      instanceId: ProviderInstanceId.make(id),
+      driverKind: ProviderDriverKind.make("codex"),
+      continuationIdentity: { driverKind: ProviderDriverKind.make("codex"), continuationKey: id },
+      displayName: id,
+      enabled: true,
+      snapshot: {
+        getSnapshot: Effect.succeed({ auth: { status: "authenticated", ...auth } }),
+      } as unknown as ProviderInstance["snapshot"],
+      orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+      textGeneration: {} as ProviderInstance["textGeneration"],
+      ...(chatGptAccessToken ? { chatGptAccessToken } : {}),
+    });
+    const signedIn = codex(
+      "personal",
+      { type: "chatgpt" },
+      Effect.sync(() => token),
+    );
+    const apiKey = codex("work", { type: "apiKey" }, Effect.undefined);
+    const managed = codex("managed", { type: "chatgpt", subscriptionSharing: true });
+    const upstream = vi.fn<typeof fetch>(async () =>
+      Response.json({ text: "hello", asset_pointer: "sediment://file" }),
+    );
+    const service = yield* CloudSpeech.CloudSpeech.pipe(
+      Effect.provide(
+        CloudSpeech.layer.pipe(
+          Layer.provide(FetchHttpClient.layer),
+          Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+          Layer.provide(registry([signedIn, apiKey, managed])),
+          Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
+        ),
+      ),
+    );
+    const transcribe = (instance?: string) =>
+      service
+        .transcribe(
+          "codex",
+          new Uint8Array(new Float32Array([0, 0.5]).buffer),
+          { ...DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS, speechLanguage: "en" },
+          undefined,
+          instance === undefined ? undefined : ProviderInstanceId.make(instance),
+        )
+        .pipe(Effect.provideService(FetchHttpClient.Fetch, upstream));
+    expect((yield* service.configured).codex).toEqual([signedIn.instanceId]);
+    expect(yield* Effect.flip(transcribe())).toMatchObject({ reason: "model-unavailable" });
+    expect(yield* Effect.flip(transcribe("managed"))).toMatchObject({
+      reason: "model-unavailable",
+    });
+    expect(yield* Effect.flip(transcribe("work"))).toMatchObject({ reason: "missing-key" });
+    expect(upstream).not.toHaveBeenCalled();
+    expect(yield* transcribe("personal")).toBe("hello");
+    const [url, init] = upstream.mock.calls[0]!;
+    expect(String(url)).toBe("https://chatgpt.com/backend-api/transcribe");
+    expect(init?.redirect).toBe("error");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe(`Bearer ${token}`);
+    expect(headers.get("chatgpt-account-id")).toBe("workspace-1");
+    const form = init?.body as FormData;
+    expect(form.get("language")).toBe("en");
+    const wav = new DataView(yield* Effect.promise(() => (form.get("file") as Blob).arrayBuffer()));
+    expect(wav.getInt16(46, true)).toBe(16384);
+    upstream.mockResolvedValueOnce(new Response(null, { status: 401 }));
+    expect(yield* Effect.flip(transcribe("personal"))).toMatchObject({
+      provider: "codex",
+      reason: "rejected-key",
+    });
+    token = undefined;
+    expect(yield* Effect.flip(transcribe("personal"))).toMatchObject({ reason: "missing-key" });
+    expect(upstream).toHaveBeenCalledTimes(2);
   }),
 );

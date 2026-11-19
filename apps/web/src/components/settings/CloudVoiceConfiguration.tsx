@@ -19,7 +19,7 @@ import {
   CLOUD_SPEECH_PROVIDER_NAMES,
   isSecretReference,
   type CloudSpeechModel,
-  type CloudSpeechProvider,
+  type CloudSpeechKeyProvider,
   type SecretProviderId,
   type SettingsSecretValue,
   type VoiceTranscriptionDestination,
@@ -67,7 +67,7 @@ import { SecretInput } from "./SecretInput";
 import { SecretSourceSelect } from "./SecretSourceInput";
 
 // Per dialog instance, not an Atom.family: key presence must be read fresh each time it opens.
-function useCloudRead<A, E>(
+export function useCloudRead<A, E>(
   prepared: PreparedConnection | null,
   read: (prepared: PreparedConnection) => Effect.Effect<A, E, HttpClient.HttpClient>,
 ) {
@@ -155,7 +155,7 @@ export function CloudVoiceConfiguration({
   close,
 }: {
   environment: Pick<EnvironmentPresentation, "environmentId" | "label" | "serverConfig">;
-  provider: CloudSpeechProvider;
+  provider: CloudSpeechKeyProvider;
   active: boolean;
   close: () => void;
 }) {

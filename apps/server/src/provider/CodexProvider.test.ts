@@ -1,9 +1,15 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import {
   applyPreferredCodexDefaultModel,
   codexRoutesSpendNativeQuota,
   mapCodexModelCapabilities,
+  readCodexChatGptAccessToken,
 } from "./CodexProvider.ts";
 
 it("maps current Codex model capability fields", () => {
@@ -193,3 +199,49 @@ it("reports native quota only for an OpenAI login on a native route", () => {
     );
   }
 });
+
+const FAKE_AUTH_APP_SERVER = `
+import { appendFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+const jwt = (exp) => "h." + Buffer.from(JSON.stringify({ exp })).toString("base64url") + ".s";
+const now = Math.floor(Date.now() / 1000);
+const saved = { fresh: jwt(now + 3600), stale: jwt(now + 30), apikey: "sk-test" }[process.env.FAKE_MODE];
+const reply = (id, result) => process.stdout.write(JSON.stringify({ id, result }) + "\\n");
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const { id, method, params } = JSON.parse(line);
+  if (method === "initialize")
+    reply(id, { codexHome: "/tmp", platformFamily: "unix", platformOs: "macos", userAgent: "codex/1.0.0" });
+  if (method === "getAuthStatus") {
+    appendFileSync(process.env.FAKE_LOG, String(params.refreshToken) + "\\n");
+    const authMethod = process.env.FAKE_MODE === "apikey" ? "apikey" : "chatgpt";
+    reply(id, { authMethod, authToken: params.refreshToken ? "refreshed" : saved, requiresOpenaiAuth: true });
+  }
+});
+`;
+
+it.live.each([
+  ["fresh", "saved", ["false"]],
+  ["stale", "refreshed", ["false", "true"]],
+  ["apikey", undefined, ["false"]],
+] as const)(
+  "reads a %s Codex sign-in, refreshing only a token about to expire",
+  ([mode, expected, reads]) =>
+    Effect.gen(function* () {
+      if ((yield* HostProcess.Platform) === "win32") return;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-fake-codex-auth-" });
+      const binaryPath = path.join(directory, "codex");
+      const log = path.join(directory, "reads.log");
+      yield* fs.writeFileString(path.join(directory, "server.mjs"), FAKE_AUTH_APP_SERVER);
+      yield* fs.writeFileString(binaryPath, `#!/bin/sh\nexec node "${directory}/server.mjs"\n`);
+      yield* fs.chmod(binaryPath, 0o755);
+      const token = yield* readCodexChatGptAccessToken({
+        binaryPath,
+        cwd: directory,
+        environment: { ...process.env, FAKE_MODE: mode, FAKE_LOG: log },
+      });
+      assert.strictEqual(token === undefined || token === "refreshed" ? token : "saved", expected);
+      assert.deepStrictEqual((yield* fs.readFileString(log)).trim().split("\n"), [...reads]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

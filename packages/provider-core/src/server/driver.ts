@@ -57,6 +57,8 @@ export interface ProviderInstance {
   ) => Effect.Effect<ProviderConsumeResetCreditOutcome, ProviderDriverError>;
   readonly orchestrationAdapter: ProviderAdapter.ProviderAdapterV2["Service"];
   readonly textGeneration: ProviderTextGeneration;
+  /** The instance's ChatGPT access token, or undefined when it is not signed in with ChatGPT. */
+  readonly chatGptAccessToken?: Effect.Effect<string | undefined, ProviderDriverError>;
   readonly auth?: ProviderAuthController;
   readonly acpSessionManagement?: {
     readonly listSessions: (input: {
