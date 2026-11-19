@@ -12,6 +12,7 @@ import { useThreadActions } from "../hooks/useThreadActions";
 import type { SidebarThreadSummary } from "../types";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "./Sidebar.snooze";
+import { boardHomeRow } from "./boardFocus";
 import { useBoardShortcuts } from "./useBoardShortcuts";
 import { Button } from "./ui/button";
 import { Kbd } from "./ui/kbd";
@@ -92,7 +93,7 @@ export function BoardThreadActions({
           <MenuTrigger render={<Button size="sm" variant="outline" />}>
             Later <Kbd>L</Kbd>
           </MenuTrigger>
-          <MenuPopup align="start">
+          <MenuPopup align="start" finalFocus={() => boardHomeRow() ?? true}>
             {snoozePresets.map((preset) => (
               <MenuItem
                 key={preset.id}

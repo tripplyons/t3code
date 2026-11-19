@@ -1,5 +1,5 @@
 import { createChildThreadApprovalsAtom } from "@t3tools/client-runtime/state/thread-requests";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { enabledEnvironmentIds } from "@t3tools/client-runtime/state/connections";
 import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import {
@@ -62,6 +62,14 @@ export function useEnvironmentThread(
   );
   const state = AsyncResult.getOrElse(result, () => EMPTY_ENVIRONMENT_THREAD_STATE);
   return state;
+}
+
+/**
+ * Holds a thread's detail stream open without reading it, so a view that opens the thread
+ * renders its conversation in the first commit. Each one is a live subscription; keep them few.
+ */
+export function useThreadDetailPrewarm(environmentId: EnvironmentId, threadId: ThreadId) {
+  useAtomMount(environmentThreads.stateAtom(environmentId, threadId));
 }
 
 const isRunning = (status: string) =>

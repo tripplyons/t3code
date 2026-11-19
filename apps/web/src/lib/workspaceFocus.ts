@@ -207,7 +207,9 @@ export function createWorkspaceFocusController(doc: Document) {
         ? (areas.find((element) => element.dataset.workspaceArea === "composer") ??
           areas.find(
             (element) =>
-              element.dataset.workspaceArea === "pull-requests" || element.matches("main"),
+              element.dataset.workspaceArea === "board" ||
+              element.dataset.workspaceArea === "pull-requests" ||
+              element.matches("main"),
           ) ??
           areas.find((element) => element.dataset.workspaceArea === "conversation") ??
           areas.find((element) => element.dataset.workspaceArea === "panel"))

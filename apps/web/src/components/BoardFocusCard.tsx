@@ -1,5 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { useLayoutEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
+import type { ThreadId } from "@t3tools/contracts";
+import { useRef, useState, type FocusEvent, type RefObject } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useQuietThreadProjection } from "../state/entities";
@@ -10,6 +11,7 @@ import { DEFAULT_APPROVAL_OPTIONS } from "./chat/ComposerPendingApprovalActions"
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { boardApprovalChoices } from "./threadBoard";
 import { useBoardShortcuts } from "./useBoardShortcuts";
+import { focusBoardHome } from "./boardFocus";
 
 const isComposerRegion = (target: EventTarget | null): target is HTMLElement =>
   target instanceof HTMLElement && target.hasAttribute("data-chat-composer-overlay");
@@ -20,15 +22,11 @@ const isInComposer = (target: EventTarget | null) =>
   !isComposerRegion(target) &&
   target.closest("[data-chat-composer-overlay]") !== null;
 
-const focusSelectedRow = () => {
-  const row = document.querySelector<HTMLElement>("[data-board-row][aria-current]");
-  row?.focus({ preventScroll: true });
-  return row !== null;
-};
-
 /**
  * The selected board thread's full conversation. The composer stays hidden
  * until the user replies, so the timeline gets the whole pane while reading.
+ * Unkeyed, like the thread route: moving between rows reuses one ChatView, which costs
+ * about half of mounting a new one.
  */
 export function BoardFocusCard({
   thread,
@@ -42,7 +40,10 @@ export function BoardFocusCard({
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const projection = useQuietThreadProjection(threadRef)?.projection ?? null;
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
-  const [error, setError] = useState<string | null>(null);
+  const [threadError, setThreadError] = useState<{ threadId: ThreadId; message: string } | null>(
+    null,
+  );
+  const error = threadError?.threadId === thread.id ? threadError.message : null;
   // Number keys answer approvals; the timeline shows them and the composer owns questions.
   const composerRef: RefObject<ChatComposerHandle | null> = useRef(null);
   const promptRef = useRef("");
@@ -55,21 +56,11 @@ export function BoardFocusCard({
     setComposerDraftPrompt,
     promptRef,
     composerRef,
-    setThreadError: (_threadId, message) => setError(message),
+    setThreadError: (threadId, message) =>
+      setThreadError(message === null ? null : { threadId, message }),
   });
   const approval = pending.activePendingApproval;
   const approvalChoices = boardApprovalChoices(approval?.options ?? DEFAULT_APPROVAL_OPTIONS);
-
-  const articleRef = useRef<HTMLElement>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Moves DOM focus while this card's nodes still exist.
-  useLayoutEffect(() => {
-    const article = articleRef.current;
-    // Switching threads remounts the card. Hand focus to the list first, or workspace focus
-    // recovery refocuses the new card's conversation region and draws its keyboard ring.
-    return () => {
-      if (article?.contains(document.activeElement)) focusSelectedRow();
-    };
-  }, []);
 
   const onBlur = (event: FocusEvent<HTMLDivElement>) => {
     // Leaving the window keeps the editor active; portaled composer menus still count as inside.
@@ -91,7 +82,7 @@ export function BoardFocusCard({
   });
 
   return (
-    <article ref={articleRef} aria-label={thread.title} className="flex min-h-0 flex-1 flex-col">
+    <article aria-label={thread.title} className="flex min-h-0 flex-1 flex-col">
       {error ? <p className="px-4 pt-2 text-sm text-destructive-foreground">{error}</p> : null}
       <div
         data-board-composer
@@ -106,8 +97,6 @@ export function BoardFocusCard({
         onKeyDownCapture={(event) => {
           // Esc in the editor hands the keyboard back to the board unless it is closing a
           // composer menu. ProseMirror prevents every Escape, so defaultPrevented can't tell.
-          // Focus moves to the selected row; a bare blur would let workspace focus recovery
-          // pull it back into the hidden composer's region.
           const target = event.target;
           if (
             event.key === "Escape" &&
@@ -115,7 +104,7 @@ export function BoardFocusCard({
             target.isContentEditable &&
             !document.querySelector("[data-composer-command-drawer], [data-composer-stash-drawer]")
           ) {
-            if (!focusSelectedRow()) target.blur();
+            if (!focusBoardHome()) target.blur();
           }
         }}
       >
@@ -127,7 +116,7 @@ export function BoardFocusCard({
           hideIdleComposer={!composerFocused}
           onSent={() => {
             onComposerFocusChange(false);
-            focusSelectedRow();
+            focusBoardHome();
           }}
         />
       </div>
