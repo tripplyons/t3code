@@ -60,27 +60,19 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
-## View unsettled work on the board
+## See every agent on the graph
 
-On web and desktop, open **Board** from the sidebar or choose **Open thread board**
-in the command palette. The board is an inbox: threads waiting on an approval or
-an answer come first, then failed and finished work you have not settled. Working
-and idle threads sit in their own sections below. Filter by project across
-connected environments. Snoozed, settled, and archived threads are hidden. Snoozed
-threads return when they wake.
+On web and desktop, open **Graph** from the sidebar or choose **Open thread graph**
+in the command palette. Each thread is a node with its title and the start of its
+latest agent message. Working subagents, forks, and delegated tasks branch out from the
+thread that started them, and threads of one project sit near each other. Click a
+node to open its thread.
 
-Select a thread to read its full conversation beside the list and act without
-leaving the board. The actions for the selected thread sit below the list. Reply
-opens the thread's full composer, so you can reply, attach or drop files, and
-implement a ready plan there. Sending closes the composer and returns you to the
-list. Press `J` and `K` to move,
-and the number beside a choice to approve, decline, or answer a question. When a
-question allows several choices, the numbers toggle them and `Enter` submits the
-answer. Press `R` to focus the composer and `Esc` to leave it, `D` to open the
-composer and start dictating, `E` to settle, `L` to snooze, `Z` to undo, and
-`Enter` to open the thread. While you dictate, press `D` again to stop, or your send
-shortcut to stop and send. A thread waiting on you can't be snoozed.
-Answer it or settle it instead.
+Drag to pan and scroll to zoom. Zoomed out, nodes show titles only. The fit button
+brings the whole graph back into view. Filter by project across connected
+environments. Only active threads appear, with the subagents still working under
+them: settled, snoozed, and archived threads and finished subagents are hidden. The graph settings adjust
+how far apart nodes sit and how strongly projects group.
 
 ## Pin and reorder threads
 
@@ -133,7 +125,7 @@ On web and desktop, the list also animates section changes made with thread acti
 preference. While dragging, rows follow the insertion gap without replaying a second transition
 after the drop.
 
-Active threads automatically follow the board order: awaiting input or approval (including errors),
+Active threads automatically follow this order: awaiting input or approval (including errors),
 working, then idle. Within each group, new threads appear above threads you have arranged.
 Settling clears a thread's active position, so using **Un-settle** returns it to the top of its
 group. Pinning and snoozing preserve its active position within the group. Status changes move

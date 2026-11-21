@@ -2,8 +2,8 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ChartNoAxesColumnIcon,
-  Columns3Icon,
   SettingsIcon,
+  WaypointsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { T, useGT } from "gt-react";
@@ -293,8 +293,8 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             onClick={handleSettingsClick}
           />
           <SidebarUtilityItem
-            icon={<Columns3Icon />}
-            label={gt("Board")}
+            icon={<WaypointsIcon />}
+            label={gt("Graph")}
             onClick={() => {
               closeMobileSidebar();
               void navigate({ to: "/board" });

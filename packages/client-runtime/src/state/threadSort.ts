@@ -262,10 +262,7 @@ type ThreadBoardStatusInput = Partial<
   >
 >;
 
-/** Shared by the board and active lists on every client. */
-export function resolveThreadBoardGroup(
-  thread: ThreadBoardStatusInput,
-): "needs-you" | "working" | "idle" {
+function resolveThreadBoardGroup(thread: ThreadBoardStatusInput): "needs-you" | "working" | "idle" {
   if (
     thread.hasPendingApprovals ||
     thread.hasPendingUserInput ||
@@ -286,7 +283,7 @@ export function resolveThreadBoardGroup(
 
 const THREAD_BOARD_PRIORITY = { "needs-you": 0, working: 1, idle: 2 };
 
-/** Awaiting, working, then idle, matching the board. Within each group,
+/** Awaiting, working, then idle. Within each group,
     new and reopened threads precede the saved arrangement. */
 export function sortActiveThreadsByOrderKey<
   T extends ThreadBoardStatusInput & {

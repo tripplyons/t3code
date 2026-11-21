@@ -62,7 +62,6 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   BugIcon,
-  Columns3Icon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -84,6 +83,7 @@ import {
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
+  WaypointsIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import { dispatchPreviewAction } from "./preview/previewActionBus";
@@ -1399,9 +1399,9 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: `action:${command}`,
-      searchTerms: ["board", "unsettled", "agents", "status"],
-      title: command === "board.open" ? gt("Open thread board") : gt("Toggle thread board"),
-      icon: <Columns3Icon className={ITEM_ICON_CLASS} />,
+      searchTerms: ["graph", "board", "agents", "subagents"],
+      title: command === "board.open" ? gt("Open thread graph") : gt("Toggle thread graph"),
+      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: command,
       run: async () => {
         dispatchBoardCommand(command);
