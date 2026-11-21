@@ -8021,11 +8021,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               : new Map(current).set(nativeThreadId, { ...entry, messages });
           });
 
-        // Claude Code records the effort a subagent ran at only in its transcript.
-        const readSubagentTranscriptEffort = Effect.fnUntraced(function* (
+        const findSubagentTranscriptDir = Effect.fnUntraced(function* (
           context: ActiveClaudeTurnContext,
           taskId: string,
-          completed: boolean,
         ) {
           const cwd = context.input.runtimePolicy.cwd;
           if (cwd === null) return undefined;
@@ -8036,7 +8034,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             "projects",
           );
           // Claude names the project folder after the resolved, possibly hashed, cwd; find the session instead.
-          let found: string | undefined;
           for (const project of yield* fileSystem
             .readDirectory(projectsDir)
             .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
@@ -8046,12 +8043,21 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 .exists(path.join(candidate, `agent-${taskId}.jsonl`))
                 .pipe(Effect.orElseSucceed(() => false))
             ) {
-              found = candidate;
-              break;
+              return { transcriptDir: candidate, configDir };
             }
           }
+          return undefined;
+        });
+
+        // Claude Code records the effort a subagent ran at only in its transcript.
+        const readSubagentTranscriptEffort = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          taskId: string,
+          completed: boolean,
+        ) {
+          const found = yield* findSubagentTranscriptDir(context, taskId);
           if (found === undefined) return undefined;
-          const transcriptDir = found;
+          const { transcriptDir, configDir } = found;
           let metadata: WorkflowAgentMetadata = {};
           let cursor = initialWorkflowAgentTranscriptCursor;
           const read = Effect.fnUntraced(function* () {
@@ -9062,6 +9068,57 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 updatedAt: at,
               },
             });
+          }
+        });
+
+        // Claude Code streams a subagent's tool calls but not its thinking, which only its
+        // transcript has. Keyed by task id; the thinking ids keep a line from moving once shown.
+        const subagentThinkingTails = new Map<
+          string,
+          {
+            readonly transcriptDir: string;
+            readonly configDir: string | undefined;
+            cursor: WorkflowAgentTranscriptCursor;
+            readonly shown: Set<string>;
+          }
+        >();
+        const showSubagentTranscriptThinking = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          subagent: ActiveClaudeSubagent,
+        ) {
+          const taskId = subagent.task.nativeTaskRef?.nativeId;
+          const startedAt = subagent.task.startedAt;
+          if (taskId == null || startedAt === null || subagent.task.status !== "running") return;
+          let tail = subagentThinkingTails.get(taskId);
+          if (tail === undefined) {
+            const found = yield* findSubagentTranscriptDir(context, taskId);
+            if (found === undefined) return;
+            tail = { ...found, cursor: initialWorkflowAgentTranscriptCursor, shown: new Set() };
+            subagentThinkingTails.set(taskId, tail);
+          }
+          // Lines from an earlier run were shown then; showing them now would reorder the thread.
+          const runStartedAt = DateTime.toEpochMillis(startedAt);
+          const target = subagentProjectionTarget(subagent);
+          while (true) {
+            const read = yield* readWorkflowAgentTranscript({
+              transcriptDir: tail.transcriptDir,
+              agentId: taskId,
+              cursor: tail.cursor,
+              ...(tail.configDir === undefined ? {} : { configDir: tail.configDir }),
+            }).pipe(Effect.option);
+            if (Option.isNone(read)) return;
+            const advanced = read.value.cursor.offset !== tail.cursor.offset;
+            tail.cursor = read.value.cursor;
+            for (const line of read.value.lines) {
+              if (!isClaudeTranscriptConversationLine(line) || line.type !== "assistant") continue;
+              const at = Option.getOrUndefined(DateTime.make(text(field(line, "timestamp")) ?? ""));
+              if (at === undefined || DateTime.toEpochMillis(at) < runStartedAt) continue;
+              if (tail.shown.has(line.uuid)) continue;
+              tail.shown.add(line.uuid);
+              yield* emitSubagentThinking(target, line, at);
+            }
+            // A line longer than the cap can't advance; stop rather than spin.
+            if (!read.value.truncated || !advanced) return;
           }
         });
 
@@ -11595,6 +11652,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
             return;
           }
+          // Before this frame's items, so the thinking that led to them comes first.
+          if (message.type === "assistant" && frameParentToolUseId !== null) {
+            const subagent = yield* resolveSubagentByToolUseId(context, frameParentToolUseId);
+            if (subagent !== undefined) yield* showSubagentTranscriptThinking(context, subagent);
+          }
 
           if (isClaudeBackgroundTasksChangedMessage(message)) {
             yield* applyBackgroundTaskRosterMessage({
@@ -12040,7 +12102,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               thinking.length === 0
                 ? undefined
                 : yield* resolveSubagentByToolUseId(context, assistantParentToolUseId);
-            if (subagent !== undefined) {
+            const tail = subagentThinkingTails.get(subagent?.task.nativeTaskRef?.nativeId ?? "");
+            if (subagent !== undefined && tail?.shown.has(message.uuid) !== true) {
+              tail?.shown.add(message.uuid);
               yield* emitSubagentThinking(
                 subagentProjectionTarget(subagent),
                 message,
