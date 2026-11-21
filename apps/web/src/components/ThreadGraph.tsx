@@ -135,7 +135,12 @@ const ThreadGraphCard = memo(function ThreadGraphCard(props: {
             {thread.title}
           </span>
           {dot ? <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span> : null}
-          {jumpLabel ? <JumpHintBadge label={jumpLabel} /> : null}
+          {jumpLabel ? (
+            // Kbd's min-w-5 lets the flex row squeeze its padding when the title is long.
+            <span className="flex shrink-0">
+              <JumpHintBadge label={jumpLabel} />
+            </span>
+          ) : null}
         </span>
         {preview ? (
           <span
