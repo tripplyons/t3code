@@ -100,7 +100,7 @@ import {
 } from "react";
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
-import { dispatchBoardCommand } from "../boardNavigation";
+import { dispatchGraphCommand } from "../graphNavigation";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -1395,16 +1395,16 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  for (const command of ["board.open", "board.toggle"] as const) {
+  for (const command of ["graph.open", "graph.toggle"] as const) {
     actionItems.push({
       kind: "action",
       value: `action:${command}`,
       searchTerms: ["graph", "board", "agents", "subagents"],
-      title: command === "board.open" ? gt("Open thread graph") : gt("Toggle thread graph"),
+      title: command === "graph.open" ? gt("Open thread graph") : gt("Toggle thread graph"),
       icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: command,
       run: async () => {
-        dispatchBoardCommand(command);
+        dispatchGraphCommand(command);
       },
     });
   }

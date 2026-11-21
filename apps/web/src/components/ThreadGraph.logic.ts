@@ -99,8 +99,8 @@ export function buildThreadGraph<T extends GraphThread>(
 
 /** Node boxes in pixels. The layout keeps them from overlapping, so cards render at these sizes. */
 export const GRAPH_NODE_SIZE = {
-  thread: { width: 184, height: 44 },
-  subagent: { width: 152, height: 40 },
+  thread: { width: 184, height: 60 },
+  subagent: { width: 152, height: 56 },
 } as const satisfies Record<ThreadGraphNodeKind, { width: number; height: number }>;
 
 /**

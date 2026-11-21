@@ -23,15 +23,15 @@ const shortcut = {
   modKey: true,
 };
 
-it.effect("accepts board commands in custom shortcuts", () =>
+it.effect("accepts graph commands in custom shortcuts", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(ResolvedKeybindingsConfig, [
-      { command: "board.open", shortcut },
-      { command: "board.toggle", shortcut },
+      { command: "graph.open", shortcut },
+      { command: "graph.toggle", shortcut },
     ]);
     assert.deepEqual(
       parsed.map((rule) => rule.command),
-      ["board.open", "board.toggle"],
+      ["graph.open", "graph.toggle"],
     );
   }),
 );

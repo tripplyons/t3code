@@ -6,15 +6,12 @@ also lists the command IDs and defaults available in your version.
 To free a default shortcut for another command, choose **Unassign** from its row's
 actions menu. **Reset to default** brings it back.
 
-## Board
+## Thread graph
 
-On web and desktop, assign shortcuts to **Board: Open** (`board.open`) and
-**Board: Toggle** (`board.toggle`) in Settings → Keybindings. Neither has a default
-shortcut. Toggle opens the board or returns to the page you were on before it.
-
-Your thread jump shortcuts follow the sidebar's order on the board too. Hold their
-modifier to see the shortcut on each row that has one. The board's own keys are
-fixed; see [the board](thread-sidebar.md#view-unsettled-work-on-the-board).
+On web and desktop, assign shortcuts to **Graph: Open** (`graph.open`) and
+**Graph: Toggle** (`graph.toggle`) in Settings → Keybindings. Neither has a default
+shortcut. Toggle opens the [thread graph](thread-sidebar.md#see-every-agent-on-the-graph)
+or returns to the page you were on before it.
 
 ## Composer controls
 

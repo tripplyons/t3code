@@ -2980,7 +2980,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
   const setVisibleJumpLabels = useThreadJumpHintStore((state) => state.setVisibleLabels);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publish the mounted sidebar's shortcut registry so board badges match the targets it handles.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publish the mounted sidebar's shortcut registry so other views can badge the targets it handles.
   useEffect(() => {
     setVisibleJumpLabels(showJumpHints ? jumpLabelByKey : null);
   }, [jumpLabelByKey, setVisibleJumpLabels, showJumpHints]);
