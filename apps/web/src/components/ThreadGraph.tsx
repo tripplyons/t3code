@@ -136,7 +136,7 @@ const ThreadGraphCard = memo(function ThreadGraphCard(props: {
         {preview ? (
           <span
             className={cn(
-              "line-clamp-2 max-w-full leading-4 wrap-break-word text-muted-foreground group-data-[zoom=far]/graph:hidden",
+              "line-clamp-3 max-w-full leading-4 wrap-break-word text-muted-foreground group-data-[zoom=far]/graph:hidden",
               root ? "text-xs" : "text-2xs",
             )}
           >
