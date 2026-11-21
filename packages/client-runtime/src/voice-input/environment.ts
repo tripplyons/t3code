@@ -5,7 +5,10 @@ import * as Schema from "effect/Schema";
 import { CloudSpeechError, SPEECH_STREAM_PATH } from "@t3tools/contracts";
 import type {
   CloudSpeechKeyProvider,
-  CloudVoiceTranscriptionDestination,
+  CloudSpeechModelId,
+  CloudSpeechProvider,
+  EnvironmentSpeechModelDownload,
+  ProviderInstanceId,
   SettingsSecretValue,
   SpeechAcceleration,
   SpeechModelUnloadTimeout,
@@ -91,17 +94,22 @@ export const getCloudSpeechModels = (prepared: PreparedConnection) =>
 
 export const requireCloudSpeechKey = (
   prepared: PreparedConnection,
-  cloud: CloudVoiceTranscriptionDestination,
+  provider: CloudSpeechProvider,
+  /** The Codex instance whose ChatGPT sign-in pays for `codex` dictation. */
+  instanceId?: ProviderInstanceId,
 ) =>
   getCloudSpeechKeys(prepared).pipe(
     Effect.flatMap((keys) =>
-      (cloud.provider === "codex" ? keys.codex?.includes(cloud.instanceId) : keys[cloud.provider])
+      (
+        provider === "codex"
+          ? instanceId !== undefined && keys.codex?.includes(instanceId)
+          : keys[provider]
+      )
         ? Effect.void
         : Effect.fail(
             new VoiceTranscriptionError({
               code: "unavailable",
-              message: new CloudSpeechError({ provider: cloud.provider, reason: "missing-key" })
-                .message,
+              message: new CloudSpeechError({ provider, reason: "missing-key" }).message,
             }),
           ),
     ),
@@ -127,18 +135,17 @@ export const setCloudSpeechKey = (
 
 export const transcribeCloudPcm = (
   prepared: PreparedConnection,
-  cloud: CloudVoiceTranscriptionDestination,
+  provider: CloudSpeechProvider,
   pcm: Uint8Array,
   options: SpeechTranscriptionOptions,
   canSend: () => boolean,
+  model?: CloudSpeechModelId,
+  instanceId?: ProviderInstanceId,
 ) => {
-  const { provider } = cloud;
-  const query =
-    cloud.provider === "openrouter"
-      ? { model: cloud.model }
-      : cloud.provider === "codex"
-        ? { instance: cloud.instanceId }
-        : {};
+  const query = {
+    ...(model === undefined ? {} : { model }),
+    ...(instanceId === undefined ? {} : { instance: instanceId }),
+  };
   return request({
     group: "voice",
     prepared,
@@ -218,6 +225,25 @@ export const selectEnvironmentSpeechModel = (prepared: PreparedConnection, model
     path: (urls) => urls.selectModel(),
     run: ({ client, headers }) => client.selectModel({ headers, payload: { modelId } }),
   });
+
+export function getSpeechModelDownloadOutcome(
+  download: EnvironmentSpeechModelDownload,
+  modelId: string,
+) {
+  if (download.cancelled) return "incomplete";
+  const model = download.models.find(({ id }) => id === modelId);
+  if (model?.state !== "installed") return "incomplete";
+  return model.active ? "already-selected" : "needs-selection";
+}
+
+/** Downloads a model and makes it the environment's transcription model on completion. */
+export const installEnvironmentSpeechModel = Effect.fn(
+  "clientRuntime.voiceInput.installEnvironmentSpeechModel",
+)(function* (prepared: PreparedConnection, modelId: string) {
+  const downloaded = yield* downloadEnvironmentSpeechModel(prepared, modelId);
+  if (getSpeechModelDownloadOutcome(downloaded, modelId) !== "needs-selection") return downloaded;
+  return yield* selectEnvironmentSpeechModel(prepared, modelId);
+});
 
 export const cancelEnvironmentSpeechModelDownload = (
   prepared: PreparedConnection,

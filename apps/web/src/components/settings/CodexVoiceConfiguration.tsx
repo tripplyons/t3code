@@ -1,8 +1,9 @@
-import { cloudSpeechDisclosure } from "@t3tools/shared/speech";
+import { cloudSpeechDisclosure } from "@t3tools/shared/speechCopy";
 import { getCloudSpeechKeys } from "@t3tools/client-runtime/voice-input";
 import { AuthOrchestrationOperateScope, type ProviderInstanceId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { useGT, useMessages } from "gt-react";
 import { useId, useState } from "react";
 import { chooseAudioDestination, useAudioChoice } from "../../speech/voiceConsent";
 import { useEnvironmentProviders, type EnvironmentPresentation } from "../../state/environments";
@@ -30,6 +31,8 @@ export function CodexVoiceConfiguration({
   active: boolean;
   close: () => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const id = environment.environmentId;
   const labelId = useId();
   const prepared = Option.getOrNull(usePreparedConnection(id));
@@ -62,27 +65,41 @@ export function CodexVoiceConfiguration({
       <DialogPopup className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {active ? "Manage Codex dictation" : "Use Codex for dictation?"}
+            {active ? gt("Manage Codex dictation") : gt("Use Codex for dictation?")}
           </DialogTitle>
-          <DialogDescription>{cloudSpeechDisclosure("codex", environment.label)}</DialogDescription>
+          <DialogDescription>
+            {cloudSpeechDisclosure("codex", environment.label, messages)}
+          </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           {!connected ? (
-            <p>Connect to {environment.label} with dictation access to continue.</p>
+            <p>
+              {gt("Connect to {environment} with dictation access to continue.", {
+                environment: environment.label,
+              })}
+            </p>
           ) : AsyncResult.isFailure(presence) ? (
             <Button size="sm" variant="outline" onClick={refresh}>
-              Retry loading Codex sign-ins
+              {gt("Retry loading Codex sign-ins")}
             </Button>
           ) : !AsyncResult.isSuccess(presence) || !presence.value ? (
-            <p role="status">Checking Codex sign-ins…</p>
+            <p role="status">{gt("Checking Codex sign-ins…")}</p>
           ) : signedIn === undefined ? (
-            <p>Update {environment.label} to use Codex dictation.</p>
+            <p>
+              {gt("Update {environment} to use Codex dictation.", {
+                environment: environment.label,
+              })}
+            </p>
           ) : signedIn.length === 0 ? (
-            <p>Sign in to Codex with ChatGPT on {environment.label} to use Codex dictation.</p>
+            <p>
+              {gt("Sign in to Codex with ChatGPT on {environment} to use Codex dictation.", {
+                environment: environment.label,
+              })}
+            </p>
           ) : (
             <div className="grid gap-2">
               <span id={labelId} className="font-medium text-sm">
-                Codex sign-in
+                {gt("Codex sign-in")}
               </span>
               <RadioGroup
                 aria-labelledby={labelId}
@@ -108,14 +125,14 @@ export function CodexVoiceConfiguration({
                 })}
               </RadioGroup>
               <p className="text-sm text-muted-foreground">
-                This choice applies only to this device.
+                {gt("This choice applies only to this device.")}
               </p>
             </div>
           )}
         </DialogPanel>
         <DialogFooter>
           <Button type="button" size="sm" variant="outline" onClick={close}>
-            Cancel
+            {gt("Cancel")}
           </Button>
           {connected && signedIn && signedIn.length > 0 && (
             <Button
@@ -133,7 +150,7 @@ export function CodexVoiceConfiguration({
                 close();
               }}
             >
-              {active ? "Save" : "Use Codex"}
+              {active ? gt("Save") : gt("Use Codex")}
             </Button>
           )}
         </DialogFooter>

@@ -172,7 +172,8 @@ it("keeps local as the default and never reuses consent for an offline or resele
     chooseVoiceDestination(host, "openai");
     const cloud = appAtomRegistry.get(voiceRouteAtom)!.transcriber!;
     mocks.fetch.mockResolvedValueOnce(Response.json({ openai: false, xai: true }));
-    await expect(cloud.prepare(options)).rejects.toMatchObject({
+    const missingKey = await cloud.prepare(options);
+    await expect(missingKey.start?.("file:///voice.m4a", options)).rejects.toMatchObject({
       code: "unavailable",
       message: expect.stringContaining("Add your OpenAI API key"),
     });
@@ -226,9 +227,11 @@ it("keeps local as the default and never reuses consent for an offline or resele
     expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
     chooseVoiceDestination(host, "codex", { instanceId: ProviderInstanceId.make("personal") });
     mocks.fetch.mockResolvedValueOnce(Response.json({ openai: true, xai: true, codex: ["work"] }));
-    await expect(
-      appAtomRegistry.get(voiceRouteAtom)!.transcriber!.prepare(options),
-    ).rejects.toMatchObject({ code: "unavailable", message: expect.stringContaining("ChatGPT") });
+    const unsigned = await appAtomRegistry.get(voiceRouteAtom)!.transcriber!.prepare(options);
+    await expect(unsigned.start!("file:///voice.m4a", options)).rejects.toMatchObject({
+      code: "unavailable",
+      message: expect.stringContaining("ChatGPT"),
+    });
     mocks.fetch
       .mockResolvedValueOnce(Response.json({ openai: true, xai: true, codex: ["personal"] }))
       .mockResolvedValueOnce(Response.json({ text: "dictated" }));

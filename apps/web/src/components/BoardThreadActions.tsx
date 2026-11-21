@@ -5,6 +5,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 
 import { useClientSettings } from "../hooks/useSettings";
@@ -45,6 +46,7 @@ export function BoardThreadActions({
   /** Opens the reply composer and starts dictation, or stops a recording. */
   onDictate: () => void;
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const { settleThread, snoozeThread } = useThreadActions();
@@ -52,10 +54,14 @@ export function BoardThreadActions({
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozePresets, setSnoozePresets] = useState<ReadonlyArray<SnoozePreset>>([]);
 
-  const settle = async () => reportFailure(await settleThread(threadRef), "Could not mark done");
+  const settle = async () =>
+    reportFailure(await settleThread(threadRef), gt("Could not mark done"));
   const snooze = async (preset: Pick<SnoozePreset, "snoozedUntil"> | null | undefined) => {
     if (!preset) return;
-    reportFailure(await snoozeThread(threadRef, preset.snoozedUntil), "Could not snooze thread");
+    reportFailure(
+      await snoozeThread(threadRef, preset.snoozedUntil),
+      gt("Could not snooze thread"),
+    );
   };
   const openSnooze = (open: boolean) => {
     if (open) {
@@ -85,13 +91,13 @@ export function BoardThreadActions({
     <>
       {settlementSupported ? (
         <Button size="sm" variant="outline" onClick={() => void settle()}>
-          Done <Kbd>E</Kbd>
+          <T>Done</T> <Kbd>E</Kbd>
         </Button>
       ) : null}
       {snoozable ? (
         <Menu open={snoozeOpen} onOpenChange={openSnooze}>
           <MenuTrigger render={<Button size="sm" variant="outline" />}>
-            Later <Kbd>L</Kbd>
+            <T>Later</T> <Kbd>L</Kbd>
           </MenuTrigger>
           <MenuPopup align="start" finalFocus={() => boardHomeRow() ?? true}>
             {snoozePresets.map((preset) => (
@@ -112,15 +118,17 @@ export function BoardThreadActions({
               </MenuItem>
             ))}
             {snoozePresets.length > 0 ? <MenuSeparator /> : null}
-            <MenuItem onClick={() => void requestCustomSnooze().then(snooze)}>Custom…</MenuItem>
+            <MenuItem onClick={() => void requestCustomSnooze().then(snooze)}>
+              <T>Custom…</T>
+            </MenuItem>
           </MenuPopup>
         </Menu>
       ) : null}
       <Button size="sm" variant="outline" onClick={onReply}>
-        Reply <Kbd>R</Kbd>
+        <T>Reply</T> <Kbd>R</Kbd>
       </Button>
       <Button size="sm" variant="outline" onClick={onDictate}>
-        Dictate <Kbd>D</Kbd>
+        <T>Dictate</T> <Kbd>D</Kbd>
       </Button>
       <Button
         size="sm"
@@ -132,7 +140,7 @@ export function BoardThreadActions({
           />
         }
       >
-        Open thread <Kbd>↵</Kbd>
+        <T>Open thread</T> <Kbd>↵</Kbd>
       </Button>
     </>
   );

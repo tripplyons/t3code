@@ -7,13 +7,15 @@ import type {
   ThreadActivityPreview,
 } from "@t3tools/contracts";
 
+import { msg } from "gt-react";
+
 import type { SidebarThreadSummary } from "../types";
 import { filterSidebarV2VisibleThreads, sortThreadsForSidebar } from "./Sidebar.logic";
 
 const THREAD_BOARD_SECTIONS = [
-  { id: "inbox", label: "Inbox" },
-  { id: "working", label: "Working" },
-  { id: "idle", label: "Idle" },
+  { id: "inbox", label: msg("Inbox") },
+  { id: "working", label: msg("Working") },
+  { id: "idle", label: msg("Idle") },
 ] as const;
 
 export type BoardSection = (typeof THREAD_BOARD_SECTIONS)[number]["id"];

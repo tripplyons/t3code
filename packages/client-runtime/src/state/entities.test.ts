@@ -98,9 +98,21 @@ describe("V2 client presentation", () => {
     ).toBeNull();
   });
 
+  it("keeps an imported thread that never ran out of Working", () => {
+    const imported = presentThreadShell(environmentId, {
+      ...v2ThreadShell,
+      historyOrigin: "v1_import",
+      activeProviderThreadId: ProviderThreadId.make("provider-thread-imported"),
+      latestRunId: null,
+      activeRunId: null,
+      status: "idle",
+      pendingBackgroundTasks: [],
+    });
+    expect(isThreadWorking(imported)).toBe(false);
+  });
+
   it.each([
-    { kinds: ["command"], expected: "idle" },
-    { kinds: ["monitor"], expected: "idle" },
+    { kinds: ["command"], expected: "completed" },
     { kinds: ["command", "subagent"], expected: "idle" },
     { kinds: ["background_task"], expected: "idle" },
   ] as const)("presents a completed shell with $kinds as $expected", ({ kinds, expected }) => {

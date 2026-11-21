@@ -1,20 +1,17 @@
 import {
+  ProviderSetupError,
   TrimmedNonEmptyString,
   ServerProviderCompatibilityStatus,
   type ProviderDriverKind,
+  type ProviderInstanceId,
   type ServerProvider,
   type ServerProviderCompatibilityAdvisory,
 } from "@t3tools/contracts";
-import { compareSemverVersions, satisfiesSemverRange } from "@t3tools/shared/semver";
+import { brokenVersionDetail } from "@t3tools/provider-core/server/compatibility";
+import { satisfiesSemverRange } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 import packageJson from "../../package.json" with { type: "json" };
 
-// This source runs the V2 orchestrator even before release tooling updates the package version.
-const runtimeCompatibilityVersion =
-  compareSemverVersions(packageJson.version, "0.0.46") < 0 ? "0.0.46" : packageJson.version;
-
-// Deliberately uses the shared CLI gate syntax: comparator groups joined by ||.
-// Prereleases and unrecognized release tags remain unknown.
 const StableVersion = TrimmedNonEmptyString.pipe(
   Schema.check(Schema.makeFilter((value) => /^\d+\.\d+\.\d+$/.test(value))),
 );
@@ -28,9 +25,22 @@ const VersionRange = TrimmedNonEmptyString.pipe(
     ),
   ),
 );
+const compilePattern = (pattern: string) => {
+  try {
+    return new RegExp(pattern, "u");
+  } catch {
+    return undefined;
+  }
+};
 const Policy = Schema.Struct({
   driver: TrimmedNonEmptyString,
   t3CodeRange: VersionRange,
+  /** Matches a reported version that is not plain `X.Y.Z`; its first group is the version to rate. */
+  versionPattern: Schema.optionalKey(
+    TrimmedNonEmptyString.pipe(
+      Schema.check(Schema.makeFilter((value) => compilePattern(value) !== undefined)),
+    ),
+  ),
   recommendedRange: Schema.optionalKey(VersionRange),
   recommendedVersion: Schema.optionalKey(StableVersion),
   ranges: Schema.Array(
@@ -64,22 +74,16 @@ export function resolveProviderCompatibility(
   policies: ReadonlyArray<ProviderCompatibilityPolicy> | undefined,
   driver: ProviderDriverKind,
   version: string | null,
-  t3CodeVersion = runtimeCompatibilityVersion,
+  t3CodeVersion = packageJson.version,
 ): ServerProviderCompatibilityAdvisory | undefined {
   const policy = policies?.find(
     (entry) => entry.driver === driver && satisfiesSemverRange(t3CodeVersion, entry.t3CodeRange),
   );
   if (!policy) return undefined;
   const unprefixed = version?.replace(/^v/, "");
-  // Strip Cursor build hashes, Google ACP release prefixes and Muse revisions; leave semver prereleases unknown.
-  const stable =
-    driver === "cursor"
-      ? unprefixed?.replace(/^(\d{4}\.\d{2}\.\d{2})-[a-f0-9]+$/, "$1")
-      : driver === "antigravity"
-        ? unprefixed?.replace(/^agy_acp_server_(\d+\.\d+\.\d+)$/, "$1")
-        : driver === "muse"
-          ? unprefixed?.replace(/^(\d+\.\d+\.\d+)-R\d+(?:\.\d+)?$/, "$1")
-          : unprefixed;
+  // Without a pattern, build hashes, revisions and prereleases stay unknown.
+  const pattern = policy.versionPattern ? compilePattern(policy.versionPattern) : undefined;
+  const stable = (pattern && unprefixed?.match(pattern)?.[1]) || unprefixed;
   const status =
     stable && /^\d+\.\d+\.\d+$/.test(stable)
       ? (policy.ranges.find((entry) => satisfiesSemverRange(stable, entry.range))?.status ??
@@ -104,6 +108,20 @@ export function resolveProviderCompatibility(
   };
 }
 
+/** The one refusal for a runtime the policy rates `broken`; `action` names how this runtime is updated. */
+export function brokenRuntimeError(input: {
+  readonly instanceId: ProviderInstanceId;
+  readonly name: string;
+  readonly version: string;
+  readonly advisory: ServerProviderCompatibilityAdvisory | undefined;
+  readonly action?: string;
+}): ProviderSetupError | undefined {
+  const detail = brokenVersionDetail(input);
+  return detail === undefined
+    ? undefined
+    : new ProviderSetupError({ instanceId: input.instanceId, operation: "runtime", detail });
+}
+
 export function applyProviderCompatibility(
   snapshot: ServerProvider,
   policies: ReadonlyArray<ProviderCompatibilityPolicy> | undefined,
@@ -111,14 +129,12 @@ export function applyProviderCompatibility(
 ): ServerProvider {
   const { compatibilityAdvisory: _previous, ...base } = snapshot;
   if (!snapshot.enabled || !snapshot.installed) return base;
-  const advisory =
-    resolveProviderCompatibility(policies, snapshot.driver, snapshot.version) ??
-    resolveProviderCompatibility(fallback, snapshot.driver, snapshot.version);
+  const resolve = (version: string | null) =>
+    resolveProviderCompatibility(policies, snapshot.driver, version) ??
+    resolveProviderCompatibility(fallback, snapshot.driver, version);
+  const advisory = resolve(snapshot.version);
   const latestVersion = snapshot.versionAdvisory?.latestVersion;
-  const latestAdvisory = latestVersion
-    ? (resolveProviderCompatibility(policies, snapshot.driver, latestVersion) ??
-      resolveProviderCompatibility(fallback, snapshot.driver, latestVersion))
-    : undefined;
+  const latestAdvisory = latestVersion ? resolve(latestVersion) : undefined;
   const updateCommand = snapshot.versionAdvisory?.updateCommand;
   // The maintenance resolver emits this command only for confirmed Homebrew installs.
   const needsHomebrewRefresh =

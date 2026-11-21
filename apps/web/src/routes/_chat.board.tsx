@@ -1,5 +1,6 @@
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import { createFileRoute } from "@tanstack/react-router";
+import { T, useGT, useMessages } from "gt-react";
 import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
@@ -66,6 +67,8 @@ const useBoardSelection = create<{ selection: { key: string; index: number } | n
 }));
 
 function ThreadBoard() {
+  const gt = useGT();
+  const m = useMessages();
   const composerHandle = useComposerHandleContext();
   const threads = useThreadShells();
   const delegatedUnderParent = useDelegatedUnderParent();
@@ -155,8 +158,8 @@ function ThreadBoard() {
     if (composerHandle?.current?.toggleDictation() === false)
       toastManager.add({
         type: "warning",
-        title: "Dictation isn't available for this thread",
-        description: "Check Settings → Voice, or answer what the thread is waiting on first.",
+        title: gt("Dictation isn't available for this thread"),
+        description: gt("Check Settings → Voice, or answer what the thread is waiting on first."),
       });
   };
 
@@ -199,14 +202,18 @@ function ThreadBoard() {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden">
       <WorkspacePageHeader electron={isElectron} className="bg-background">
-        <h1 className="shrink-0 text-sm font-medium">Board</h1>
+        <h1 className="shrink-0 text-sm font-medium">
+          <T>Board</T>
+        </h1>
         <div className="[-webkit-app-region:no-drag] ml-auto min-w-0 w-44 sm:w-64">
           <Select value={projectKey} onValueChange={(value) => setProjectKey(value ?? "")}>
-            <SelectTrigger aria-label="Filter board by project" className="w-full">
-              <SelectValue>{projectByKey.get(projectKey)?.title ?? "All projects"}</SelectValue>
+            <SelectTrigger aria-label={gt("Filter board by project")} className="w-full">
+              <SelectValue>{projectByKey.get(projectKey)?.title ?? gt("All projects")}</SelectValue>
             </SelectTrigger>
             <SelectPopup finalFocus={() => boardHomeRow() ?? true}>
-              <SelectItem value="">All projects</SelectItem>
+              <SelectItem value="">
+                <T>All projects</T>
+              </SelectItem>
               {projects.map((project) => (
                 <SelectItem
                   key={`${project.environmentId}:${project.id}`}
@@ -225,7 +232,7 @@ function ThreadBoard() {
         className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background lg:grid lg:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]"
       >
         <nav
-          aria-label="Board threads"
+          aria-label={gt("Board threads")}
           data-board-nav
           data-workspace-area="board"
           data-workspace-order={0.5}
@@ -244,7 +251,7 @@ function ThreadBoard() {
           <div className="min-h-0 overflow-auto px-3 pt-3">
             {!bootstrapped && (
               <p role="status" className="mb-3 px-2 text-sm text-muted-foreground">
-                Loading threads…
+                <T>Loading threads…</T>
               </p>
             )}
             {sections.map((section) => {
@@ -269,13 +276,13 @@ function ThreadBoard() {
                         aria-hidden
                         className={cn("size-3.5 shrink-0", open && "rotate-90")}
                       />
-                      {section.label}
+                      {m(section.label)}
                       <span className="ml-auto tabular-nums">{section.threads.length}</span>
                     </button>
                   </h2>
                   {open && section.threads.length === 0 ? (
                     <p className="px-2 py-2 text-xs text-muted-foreground">
-                      {section.id === "inbox" ? "Nothing needs you." : "No threads"}
+                      {section.id === "inbox" ? gt("Nothing needs you.") : gt("No threads")}
                     </p>
                   ) : null}
                   {open ? (
@@ -321,7 +328,7 @@ function ThreadBoard() {
                                 </p>
                               ) : null}
                               <div className="mt-1 truncate text-xs text-muted-foreground">
-                                {project?.title ?? "Unknown project"}
+                                {project?.title ?? gt("Unknown project")}
                               </div>
                             </button>
                           </li>
@@ -347,13 +354,13 @@ function ThreadBoard() {
               />
             ) : null}
             <Button size="sm" variant="outline" onClick={() => move(1)}>
-              Next <Kbd>J</Kbd>
+              <T>Next</T> <Kbd>J</Kbd>
             </Button>
             <Button size="sm" variant="outline" onClick={() => move(-1)}>
-              Previous <Kbd>K</Kbd>
+              <T>Previous</T> <Kbd>K</Kbd>
             </Button>
             <Button size="sm" variant="outline" onClick={() => undoLatestThreadAction()}>
-              Undo <Kbd>Z</Kbd>
+              <T>Undo</T> <Kbd>Z</Kbd>
             </Button>
           </div>
         </nav>
@@ -371,7 +378,7 @@ function ThreadBoard() {
             />
           ) : (
             <p className="p-4 text-sm text-muted-foreground sm:p-6">
-              {bootstrapped ? "Nothing needs you." : null}
+              {bootstrapped ? gt("Nothing needs you.") : null}
             </p>
           )}
         </div>
