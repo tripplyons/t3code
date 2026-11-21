@@ -5,8 +5,21 @@ import {
   buildThreadGraph,
   createGraphSimulation,
   DEFAULT_GRAPH_FORCES,
+  plainPreviewText,
   tickGraphSimulation,
 } from "./ThreadGraph.logic";
+
+describe("plainPreviewText", () => {
+  it.each([
+    ["**Starting shadow-strip math**", "Starting shadow-strip math"],
+    ["## Plan\n\n- [x] Read `snake_case.ts`\n2. Run *tests*", "Plan Read snake_case.ts Run tests"],
+    ["See [the docs](https://example.com) and ~~old~~ _notes_.", "See the docs and old notes."],
+    ["> quoted\n```ts\nconst a = 2 * 3;\n```", "quoted const a = 2 * 3;"],
+    ["**Cut off mid bold", "Cut off mid bold"],
+  ])("strips %j", (markdown, plain) => {
+    expect(plainPreviewText(markdown)).toBe(plain);
+  });
+});
 
 const environmentId = EnvironmentId.make("env");
 

@@ -97,6 +97,22 @@ export function buildThreadGraph<T extends GraphThread>(
   return nodes;
 }
 
+/**
+ * Plain text for a card preview. The server cuts previews at a character limit, so markers can
+ * be unclosed. Emphasis markers inside words, such as snake_case, stay.
+ */
+export function plainPreviewText(markdown: string): string {
+  return markdown
+    .replace(/^\s*```.*$/gm, "")
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/gm, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)?/g, "$1")
+    .replace(/`+/g, "")
+    .replace(/~~/g, "")
+    .replace(/(?<![\p{L}\p{N}])[*_]+(?=\S)|(?<=\S)[*_]+(?![\p{L}\p{N}])/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Node boxes in pixels. The layout keeps them from overlapping, so cards render at these sizes. */
 export const GRAPH_NODE_SIZE = {
   thread: { width: 184, height: 76 },

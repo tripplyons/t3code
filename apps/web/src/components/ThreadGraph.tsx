@@ -19,6 +19,7 @@ import {
   graphBounds,
   GRAPH_NODE_SIZE,
   GRAPH_UNIT,
+  plainPreviewText,
   tickGraphSimulation,
   type GraphForces,
   type GraphSimulation,
@@ -66,7 +67,10 @@ const memory: {
 
 /** The start of the thread's latest agent or thinking message. */
 function latestPreviewText(thread: SidebarThreadSummary) {
-  return thread.source.recentActivityPreviews?.find((preview) => preview.kind !== "tool")?.text;
+  const text = thread.source.recentActivityPreviews?.find(
+    (preview) => preview.kind !== "tool",
+  )?.text;
+  return text === undefined ? undefined : plainPreviewText(text) || undefined;
 }
 
 const ThreadGraphCard = memo(function ThreadGraphCard(props: {
