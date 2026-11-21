@@ -264,6 +264,50 @@ function separate(nodes: readonly SimNode[]): boolean {
   return overlapped;
 }
 
+/**
+ * Moves cards off edges they are not an end of, since a card hides the edges under it and would
+ * read as a link between the two threads it covers. Returns whether any card still covered one.
+ */
+function clearEdges(nodes: readonly SimNode[]): boolean {
+  let covered = false;
+  for (const child of nodes) {
+    const parent = nodes[child.parent];
+    if (!parent) continue;
+    const dx = parent.x - child.x;
+    const dy = parent.y - child.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-9) continue;
+    // The edge's unit normal.
+    const nx = -dy / length;
+    const ny = dx / length;
+    for (let index = 0; index < nodes.length; index += 1) {
+      const card = nodes[index]!;
+      if (card === child || card === parent) continue;
+      if (
+        card.x + card.halfWidth <= Math.min(child.x, parent.x) ||
+        card.x - card.halfWidth >= Math.max(child.x, parent.x) ||
+        card.y + card.halfHeight <= Math.min(child.y, parent.y) ||
+        card.y - card.halfHeight >= Math.max(child.y, parent.y)
+      )
+        continue;
+      const side = nx * (card.x - child.x) + ny * (card.y - child.y);
+      const reach = card.halfWidth * Math.abs(nx) + card.halfHeight * Math.abs(ny);
+      const overlap = reach - Math.abs(side);
+      if (overlap <= 0) continue;
+      covered = true;
+      // The card steps off to the nearer side; the edge gives way a little the other way.
+      const shift = (side < 0 || (side === 0 && index % 2 === 0) ? -overlap : overlap) * 1.001;
+      card.x += nx * shift * 0.75;
+      card.y += ny * shift * 0.75;
+      for (const end of [child, parent]) {
+        end.x -= nx * shift * 0.25;
+        end.y -= ny * shift * 0.25;
+      }
+    }
+  }
+  return covered;
+}
+
 /** Advances the layout one step. Returns false once it has settled. */
 export function tickGraphSimulation(simulation: GraphSimulation, forces: GraphForces): boolean {
   const { nodes } = simulation;
@@ -334,11 +378,15 @@ export function tickGraphSimulation(simulation: GraphSimulation, forces: GraphFo
     node.x += node.vx;
     node.y += node.vy;
   }
+  clearEdges(nodes);
   separate(nodes);
   separate(nodes);
   if (simulation.alpha >= ALPHA_MIN) return true;
-  // Forces have faded out; finish parting any cards still touching.
-  for (let pass = 0; pass < 200 && separate(nodes); pass += 1);
+  // Forces have faded out; finish parting any cards still touching or covering an edge.
+  for (let pass = 0; pass < 200; pass += 1) {
+    const covered = clearEdges(nodes);
+    if (!separate(nodes) && !covered) break;
+  }
   return false;
 }
 

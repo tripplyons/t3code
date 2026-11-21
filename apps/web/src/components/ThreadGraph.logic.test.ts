@@ -139,6 +139,38 @@ describe("graph simulation", () => {
     expect(overlapping).toEqual([]);
   });
 
+  it("settles with no card over an edge it is not an end of", () => {
+    const covered = nodes.flatMap((child) => {
+      const parent = nodes[child.parent];
+      if (!parent) return [];
+      return nodes
+        .filter((card) => card !== child && card !== parent)
+        .filter((card) => {
+          // Clip the edge to the card's box (Liang-Barsky); a non-empty overlap is covered.
+          let enter = 0;
+          let exit = 1;
+          const dx = parent.x - child.x;
+          const dy = parent.y - child.y;
+          for (const [delta, low, high] of [
+            [dx, card.x - card.halfWidth - child.x, card.x + card.halfWidth - child.x],
+            [dy, card.y - card.halfHeight - child.y, card.y + card.halfHeight - child.y],
+          ] as const) {
+            if (Math.abs(delta) < 1e-9) {
+              if (low > 0 || high < 0) return false;
+              continue;
+            }
+            const a = low / delta;
+            const b = high / delta;
+            enter = Math.max(enter, Math.min(a, b));
+            exit = Math.min(exit, Math.max(a, b));
+          }
+          return exit - enter > 1e-3;
+        })
+        .map((card) => [child.key, parent.key, card.key]);
+    });
+    expect(covered).toEqual([]);
+  });
+
   it("keeps subagents nearer their parent, and roots nearer their project, than the rest", () => {
     const mean = (values: number[]) =>
       values.reduce((sum, value) => sum + value, 0) / values.length;
