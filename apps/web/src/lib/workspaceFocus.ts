@@ -182,10 +182,12 @@ export function createWorkspaceFocusController(doc: Document) {
     // area is only the fallback it was then, so controls mounted since take precedence.
     const isConversation = area.dataset.workspaceArea === "conversation";
     // The thread graph is a canvas: arriving there focuses the canvas, never one of its threads.
+    // Only an F6 move (the unnested call) rings it; opening the graph leaves it unmarked.
     if (area.dataset.workspaceArea === "board") {
       area.focus({ preventScroll: true });
       if (doc.activeElement !== area) return false;
-      markKeyboardArea(area);
+      if (nested) unmarkKeyboardArea();
+      else markKeyboardArea(area);
       return true;
     }
     const targets = new Set([
