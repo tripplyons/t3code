@@ -38,8 +38,13 @@ const emptyShellSnapshot = {
 } as OrchestrationV2ShellSnapshot;
 
 describe("subagent shell events", () => {
-  const stored = (threadId: string, type: string, itemType = "command_execution") =>
-    ({ event: { threadId, type, payload: { type: itemType } } }) as ApplicationStoredEvent;
+  const stored = (
+    threadId: string,
+    type: string,
+    itemType = "command_execution",
+    status = "running",
+  ) =>
+    ({ event: { threadId, type, payload: { type: itemType, status } } }) as ApplicationStoredEvent;
 
   it("keeps regular threads and subagent state changes while omitting subagent transcript updates", () => {
     const subagents = new Set(["child"]);
@@ -53,6 +58,20 @@ describe("subagent shell events", () => {
       expect(
         shouldPublishShellApplicationEvent(
           stored("child", "turn-item.updated", itemType),
+          subagents,
+        ),
+      ).toBe(true);
+    }
+    for (const itemType of ["assistant_message", "reasoning"]) {
+      expect(
+        shouldPublishShellApplicationEvent(
+          stored("child", "turn-item.updated", itemType),
+          subagents,
+        ),
+      ).toBe(false);
+      expect(
+        shouldPublishShellApplicationEvent(
+          stored("child", "turn-item.updated", itemType, "completed"),
           subagents,
         ),
       ).toBe(true);

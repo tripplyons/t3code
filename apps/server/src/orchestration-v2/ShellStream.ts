@@ -548,7 +548,10 @@ export function shouldPublishShellApplicationEvent(
     // Replay and the live tail overlap; keep known IDs so late events stay filtered.
     return true;
   }
-  if (event.type === "turn-item.updated" && turnItemCanChangeUserWait(event.payload)) {
+  if (
+    event.type === "turn-item.updated" &&
+    (turnItemCanChangeUserWait(event.payload) || finishesActivityPreview(event.payload))
+  ) {
     return true;
   }
   return !(
@@ -559,6 +562,10 @@ export function shouldPublishShellApplicationEvent(
       event.type === "message.updated")
   );
 }
+
+// Shell cards preview the latest message; skip streaming deltas but publish the finished text.
+const finishesActivityPreview = (item: { readonly type: string; readonly status: string }) =>
+  (item.type === "assistant_message" || item.type === "reasoning") && item.status !== "running";
 
 /** Shell updates refetch an aggregate; drop transcript bodies before retaining an event. */
 export function toShellApplicationEvent(stored: ApplicationStoredEvent): ShellApplicationEvent {
