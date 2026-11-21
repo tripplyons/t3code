@@ -63,6 +63,19 @@ describe("workspace area focus", () => {
     expect(document.activeElement).toBe(panel.button);
   });
 
+  it("focuses the thread graph itself, not a remembered or first thread", () => {
+    using fixture = setup();
+    const sidebar = fixture.area("sidebar", 0);
+    const graph = fixture.area("board", 1);
+    graph.button.focus();
+    sidebar.button.focus();
+    fixture.controller.move(1);
+    expect(document.activeElement).toBe(graph.element);
+    sidebar.button.focus();
+    expect(fixture.controller.focus("content")).toBe(true);
+    expect(document.activeElement).toBe(graph.element);
+  });
+
   it("moves back out of a side chat whose areas reuse the main chat's names", () => {
     using fixture = setup();
     const composer = fixture.area("composer", 2);

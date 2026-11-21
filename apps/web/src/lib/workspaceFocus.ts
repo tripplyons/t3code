@@ -181,6 +181,13 @@ export function createWorkspaceFocusController(doc: Document) {
     // so the conversation reuses a control only while it is still in view. A remembered
     // area is only the fallback it was then, so controls mounted since take precedence.
     const isConversation = area.dataset.workspaceArea === "conversation";
+    // The thread graph is a canvas: arriving there focuses the canvas, never one of its threads.
+    if (area.dataset.workspaceArea === "board") {
+      area.focus({ preventScroll: true });
+      if (doc.activeElement !== area) return false;
+      markKeyboardArea(area);
+      return true;
+    }
     const targets = new Set([
       previous &&
       previous !== area &&
