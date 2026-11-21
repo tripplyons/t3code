@@ -8,11 +8,13 @@ import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef } from "react"
 
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
+import { useThreadJumpHintStore } from "../threadJumpHintStore";
 import type { SidebarThreadSummary } from "../types";
 import { useUiStateStore } from "../uiStateStore";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { resolveSidebarFolderDot, resolveThreadLastVisitedAt } from "./Sidebar.logic";
 import { FOLDER_DOT_CLASS_NAME, FOLDER_DOT_LABEL } from "./sidebar/SidebarProjectFolderHeader";
+import { JumpHintBadge } from "./sidebar/SidebarThreadRow";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import {
   createGraphSimulation,
@@ -83,12 +85,9 @@ const ThreadGraphCard = memo(function ThreadGraphCard(props: {
   const m = useMessages();
   const { node, project } = props;
   const thread = node.thread;
-  const localLastVisitedAt = useUiStateStore(
-    (state) =>
-      state.threadLastVisitedAtById[
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
-      ],
-  );
+  const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+  const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const jumpLabel = useThreadJumpHintStore((state) => state.visibleLabelByKey.get(threadKey));
   const status = resolveSidebarFolderDot([
     {
       ...thread,
@@ -136,6 +135,7 @@ const ThreadGraphCard = memo(function ThreadGraphCard(props: {
             {thread.title}
           </span>
           {dot ? <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span> : null}
+          {jumpLabel ? <JumpHintBadge label={jumpLabel} /> : null}
         </span>
         {preview ? (
           <span
