@@ -39,6 +39,7 @@ const MIN_SCALE = 0.15;
 const MAX_SCALE = 2;
 // Below this zoom a card shows only its title, in larger type, so an overview stays legible.
 const FAR_SCALE = 0.6;
+const EDGE_WIDTH = 1.5;
 const FIT_MARGIN = 32;
 const DRAG_THRESHOLD = 4;
 // More new threads than this at once are laid out before paint instead of animated in.
@@ -169,6 +170,7 @@ export function ThreadGraph(props: {
   const gt = useGT();
   const navigate = useNavigate();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const edgesRef = useRef<SVGPathElement>(null);
   const elements = useRef(new Map<string, HTMLElement>());
@@ -201,9 +203,15 @@ export function ThreadGraph(props: {
 
   const applyView = (view: GraphView) => {
     memory.view = view;
+    const pan = panRef.current;
     const layer = layerRef.current;
-    if (!layer) return;
-    layer.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+    if (!pan || !layer) return;
+    pan.style.transform = `translate(${Math.round(view.x)}px,${Math.round(view.y)}px)`;
+    // CSS zoom lays the cards out again at the new size, so text renders crisp at every
+    // scale. A transform scale would stretch a rasterized bitmap instead.
+    layer.style.zoom = String(view.scale);
+    // Zoom is not a transform, so non-scaling-stroke cannot hold the edge width.
+    edgesRef.current?.setAttribute("stroke-width", String(EDGE_WIDTH / view.scale));
     layer.dataset.zoom = view.scale < FAR_SCALE ? "far" : "near";
   };
 
@@ -382,31 +390,24 @@ export function ThreadGraph(props: {
         viewport.scrollTo(0, 0);
       }}
     >
-      <div
-        ref={layerRef}
-        className="group/graph absolute top-0 left-0 size-0 origin-top-left will-change-transform"
-      >
-        <svg
-          aria-hidden
-          className="pointer-events-none absolute top-0 left-0 size-px overflow-visible"
-        >
-          <path
-            ref={edgesRef}
-            fill="none"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-            className="stroke-muted-foreground/40"
-          />
-        </svg>
-        {props.nodes.map((node) => (
-          <ThreadGraphCard
-            key={node.key}
-            node={node}
-            project={props.projectByKey.get(node.projectKey)}
-            register={register}
-            onOpen={openThread}
-          />
-        ))}
+      <div ref={panRef} className="absolute top-0 left-0 size-0">
+        <div ref={layerRef} className="group/graph absolute top-0 left-0 size-0">
+          <svg
+            aria-hidden
+            className="pointer-events-none absolute top-0 left-0 size-px overflow-visible"
+          >
+            <path ref={edgesRef} fill="none" className="stroke-muted-foreground/40" />
+          </svg>
+          {props.nodes.map((node) => (
+            <ThreadGraphCard
+              key={node.key}
+              node={node}
+              project={props.projectByKey.get(node.projectKey)}
+              register={register}
+              onOpen={openThread}
+            />
+          ))}
+        </div>
       </div>
       <div
         className="absolute right-3 bottom-3 flex cursor-default gap-1"
